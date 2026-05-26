@@ -1,6 +1,6 @@
 # Architectural Decisions
 
-This document captures the rationale, formulas, and references for the metric definitions and evaluation strategy implemented in `rig-evals-rag`.
+This document captures the rationale, formulas, and references for the metric definitions and evaluation strategy implemented in `rig-retrieval-evals`.
 
 ## Supported Metrics (v0.1)
 
@@ -85,3 +85,58 @@ To measure whether ingesting a *new* document actually improves the knowledge ba
 2. **RAGAS**: Automated Evaluation of Retrieval Augmented Generation [Es et al., 2023]
 3. **MTEB**: Massive Text Embedding Benchmark [Muennighoff et al., 2022]
 4. **TREC eval**: Standard IR metric computation (https://github.com/usnistgov/trec_eval)
+
+## Stress eval finding: memvid-core WAL bug
+
+The `eval_memvid_attack` example (added 2025-01) was designed as a real-corpus
+stress test for `MemvidStore`, using MITRE ATT&CK Enterprise STIX 2.1 (~2.7k
+indexable nodes covering techniques, groups, malware, tools, mitigations,
+data-components, data-sources, detection-strategies, and tactics — directly
+mapping onto the user's "network / device / asset / AD / services / processes"
+domains).
+
+When pointed at `rig-memvid` 0.2.0 (which pins `memvid-core` 2.0.139) the
+example fails deterministically with:
+
+```
+memvid error: Embedded WAL is corrupted at offset <N>: wal record checksum mismatch
+```
+
+### Reproducer (independently verified)
+
+The bug was independently reproduced in a stand-alone Cargo project that
+depends only on `rig-memvid` 0.2.0 (default features + `lex`) and replays the
+same ATT&CK STIX bundle. It fails deterministically on the **16th** put
+(MITRE mitigation `M1045 "Code Signing"`, ~2.5 KB) after 15 successful
+mitigation inserts (~30 KB cumulative payload). The error is constant:
+
+```
+memvid error: Embedded WAL is corrupted at offset 78667: wal record checksum mismatch
+```
+
+Notes from bisecting:
+
+- A naive synthetic probe (30 × ~3.8 KB docs of *highly repetitive* lorem-ipsum
+  text) ingests cleanly. The trigger is **content-dependent**, not raw-size
+  dependent — most likely related to the lex/tantivy posting size when text
+  is varied enough to produce many unique tokens.
+- An earlier hypothesis that the bug was a "ring-buffer wrap at 64 KB"
+  was **wrong**: the WAL header's default `wal_size` is 4 MB, and the
+  failure offset (78,667 B) is *inside* that region, not at a wrap. The bug
+  is therefore in `memvid-core`'s WAL append / grow path, not in any
+  fixed-size-ring logic.
+- The bug surfaces with `MemvidStore::builder().enable_lex().open_or_create()`
+  + per-put `put_text` + a single `commit()` at the end — i.e. the canonical
+  rig-memvid usage pattern. `rig-memvid`'s own test suite passes only because
+  it ingests ≤ 3 small docs.
+
+### Disposition
+
+- `eval_memvid_attack` is shipped as-is; it exits with code `3` and prints the
+  offending error verbatim when the bug is hit. This keeps the stress eval
+  faithful — we will not synthesise fake numbers around a broken backend.
+- The example will start producing real metrics once `rig-memvid` updates
+  to a `memvid-core` version with the WAL fix.
+- The minimal upstream repro (single binary, ~70 lines, ATT&CK JSON only)
+  is captured in the conversation transcript and is ready to file against
+  `memvid-core`.

@@ -2,7 +2,7 @@
 //!
 //! `models` evaluates the observable behavior of a model invocation: output
 //! text, JSON validity, forbidden leakage, and token budget. Provider metadata
-//! remains the responsibility of companion crates such as `rig-model-meta`.
+//! remains the responsibility of companion crates such as `rig-model-catalog`.
 
 use std::collections::BTreeMap;
 use std::future::Future;

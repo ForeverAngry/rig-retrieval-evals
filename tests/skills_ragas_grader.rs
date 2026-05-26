@@ -7,12 +7,12 @@ use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig_evals_rag::ragas::{RagasInputs, RagasMetric, RagasScore};
-use rig_evals_rag::skills::{
+use rig_retrieval_evals::ragas::{RagasInputs, RagasMetric, RagasScore};
+use rig_retrieval_evals::skills::{
     AgentRunner, AsyncGrader, ContainsGrader, RagasJudgeGrader, SkillHarness, SkillTask,
     SkillTaskSet, Transcript,
 };
-use rig_evals_rag::{Error, Result};
+use rig_retrieval_evals::{Error, Result};
 
 struct EchoRunner;
 impl AgentRunner for EchoRunner {

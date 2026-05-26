@@ -7,7 +7,7 @@
 )]
 
 use rig::{client::CompletionClient, extractor::ExtractorBuilder, providers::ollama::Client};
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     Document, LlmPropositionExtractor, LlmTripleExtractor, PropositionExtractor, TripleExtractor,
 };
 

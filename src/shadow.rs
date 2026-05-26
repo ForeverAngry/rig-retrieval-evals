@@ -8,13 +8,13 @@
 //!
 //! ```no_run
 //! use rig::vector_store::VectorStoreIndexDyn;
-//! use rig_evals_rag::{EvalShadowStore, Qrels, RecallAtK, RetrievalMetric};
+//! use rig_retrieval_evals::{EvalShadowStore, Qrels, RecallAtK, RetrievalMetric};
 //!
 //! # async fn run(
 //! #     before: &dyn VectorStoreIndexDyn,
 //! #     after: &dyn VectorStoreIndexDyn,
 //! #     qrels: &Qrels,
-//! # ) -> Result<(), rig_evals_rag::Error> {
+//! # ) -> Result<(), rig_retrieval_evals::Error> {
 //! let metrics: Vec<Box<dyn RetrievalMetric>> = vec![Box::new(RecallAtK::new(5))];
 //! let report = EvalShadowStore::new(before, after, 5)
 //!     .with_concurrency(2)

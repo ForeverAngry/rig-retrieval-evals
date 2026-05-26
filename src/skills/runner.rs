@@ -17,8 +17,8 @@ use crate::skills::transcript::Transcript;
 ///
 /// ```no_run
 /// use std::future::Future;
-/// use rig_evals_rag::skills::{AgentRunner, SkillTask, Transcript};
-/// use rig_evals_rag::Result;
+/// use rig_retrieval_evals::skills::{AgentRunner, SkillTask, Transcript};
+/// use rig_retrieval_evals::Result;
 ///
 /// struct EchoRunner;
 ///

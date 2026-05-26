@@ -1,12 +1,12 @@
 [package]
-name = "rig-evals-rag"
-version = "0.1.0"
+name = "rig-retrieval-evals"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "Knowledge-base and retrieval evaluation harness for Rig agents."
-repository = "https://github.com/ForeverAngry/rig-evals-rag"
+repository = "https://github.com/ForeverAngry/rig-retrieval-evals"
 authors = ["ForeverAngry"]
 keywords = ["rig", "rag", "evals", "retrieval", "agent"]
 categories = ["text-processing", "development-tools::testing"]
@@ -21,6 +21,7 @@ futures = "0.3.32"
 schemars = { version = "1.2.1", features = ["derive"] }
 regex = { version = "1.10", optional = true }
 petgraph = { version = "0.6", optional = true }
+whatlang = { version = "0.16", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.102"
@@ -37,7 +38,7 @@ default = ["retrieval"]
 retrieval = []
 ragas = []
 embedding-novelty = ["knowledge-gain"]
-ingestion = ["dep:regex"]
+ingestion = ["dep:regex", "dep:whatlang"]
 ingestion-graph = ["ingestion", "dep:petgraph"]
 knowledge-gain = ["shadow"]
 memvid-example = ["knowledge-gain"]
@@ -46,6 +47,7 @@ skills = []
 memory = []
 models = []
 agents = []
+observe = []
 
 [[example]]
 name = "ingestion_ioc"
@@ -61,6 +63,10 @@ required-features = ["skills"]
 
 [[example]]
 name = "eval_memvid"
+required-features = ["memvid-example"]
+
+[[example]]
+name = "eval_memvid_attack"
 required-features = ["memvid-example"]
 
 [lints.clippy]

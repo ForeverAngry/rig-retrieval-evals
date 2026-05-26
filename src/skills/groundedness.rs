@@ -109,7 +109,7 @@ fn tokenize_unique(s: &str) -> std::collections::BTreeSet<String> {
 /// ```no_run
 /// # use std::sync::Arc;
 /// # use rig::vector_store::VectorStoreIndexDyn;
-/// # use rig_evals_rag::skills::RetrievalGroundednessGrader;
+/// # use rig_retrieval_evals::skills::RetrievalGroundednessGrader;
 /// # fn demo(store: Arc<dyn VectorStoreIndexDyn>) {
 /// let grader = RetrievalGroundednessGrader::new("grounded", store)
 ///     .with_k(5)

@@ -1,10 +1,10 @@
-# rig-evals-rag Roadmap
+# rig-retrieval-evals Roadmap
 
-This roadmap is the crate-local operating plan for `rig-evals-rag`. The cross-crate coordination summary lives in [`rig-ecosystem/docs/roadmap.md`](../rig-ecosystem/docs/roadmap.md). The fuller planning record for phased evaluation work remains in [`../rig-ecosystem/docs/evals-rag-plan.md`](../rig-ecosystem/docs/evals-rag-plan.md).
+This roadmap is the crate-local operating plan for `rig-retrieval-evals`. The cross-crate coordination summary lives in [`rig-ecosystem/docs/roadmap.md`](../rig-ecosystem/docs/roadmap.md). The fuller planning record for phased evaluation work remains in [`../rig-ecosystem/docs/evals-rag-plan.md`](../rig-ecosystem/docs/evals-rag-plan.md).
 
 ## Role
 
-`rig-evals-rag` measures retrieval and knowledge-base quality for any Rig `VectorStoreIndex`. It evaluates stores and RAG context, not general agent behavior or product dashboards.
+`rig-retrieval-evals` measures retrieval and knowledge-base quality for any Rig `VectorStoreIndex`. It evaluates stores and RAG context, not general agent behavior or product dashboards.
 
 ## Landed
 
@@ -21,6 +21,13 @@ This roadmap is the crate-local operating plan for `rig-evals-rag`. The cross-cr
   ([src/ingestion/lint.rs](src/ingestion/lint.rs)).
 - Repeated-trial reliability reporting with thresholded pass@k and pass^k over
   shared `MetricReport`s.
+- Default-feature `staleness` module (`CorpusVersions`, `StalenessAnnotation`,
+  `StaleHit` / `StalenessReport`, `ConflictGroup` / `ConflictReport`,
+  `detect_stale_hits`, `detect_conflicts`) for flagging top-k hits that are
+  superseded by a newer doc id and `version_key` collisions inside the same
+  window. Covers the supersession contract that `rig-memvid`'s
+  `MemoryContextPack` produces at the host side, without taking a dependency
+  on it. Committed fixture under [tests/data/tiny_corpus_versions.jsonl](tests/data/tiny_corpus_versions.jsonl).
 
 ## Prototype Grade
 
@@ -29,14 +36,15 @@ This roadmap is the crate-local operating plan for `rig-evals-rag`. The cross-cr
 - `examples/eval_memvid.rs` now runs `rig-memvid::MemvidStore` and `MemoryCardContext` through `RetrievalHarness` / `EvalShadowStore` against committed raw-frame and structured-card fixtures.
 - `EvalShadowStore` is available behind `shadow` for pre/post scoring over two `VectorStoreIndexDyn` snapshots.
 - Knowledge-gain scoring is available behind `knowledge-gain`, including candidate-document ranking and host-supplied novelty scores; `embedding-novelty` adds a provider-neutral adapter over host-supplied Rig embedding models.
-- Bootstrap confidence intervals and non-zero CI regression exits are not implemented.
+- Bootstrap confidence intervals (`MetricCi`, `MetricReport::bootstrap_ci` / `with_bootstrap_ci`, deterministic SplitMix64) and non-zero CI exits (`ReportDiff::is_clean` / `exit_code`) ship in the default `retrieval` build and round-trip through `MultiReport::diff`.
+- `observe` feature emits `MultiReport` / `ReportDiff` as `rig-tap`-compatible JSON envelopes (`eval.retrieval_report`, `eval.regression_diff`) on the `rig_tap` tracing target without depending on `rig-tap`.
 
 ## Next Work
 
 1. Cut the RAGAS and ingestion release after final validation and README/changelog sync.
 2. Extend chunk-stat ingestion linting with language/encoding sanity checks and MinHash near-duplicate detection.
 3. Add provider-specific novelty examples only where they belong: downstream demos or docs that already own credentials and model setup.
-4. Add bootstrap confidence intervals and non-zero regression exits for baseline comparisons.
+4. Surface `StalenessReport` / `ConflictReport` aggregates inside `MultiReport` (rate per query + dataset-level rollup) so freshness regressions trip the same baseline-diff gates as the IR metrics.
 
 ## Maturity Bar
 

@@ -2,11 +2,68 @@
 
 <!-- markdownlint-disable MD024 -->
 
-All notable changes to `rig-evals-rag` are documented here. The format is
+All notable changes to `rig-retrieval-evals` are documented here. The format is
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Bootstrap confidence intervals on `MetricReport::mean`: new `MetricCi`
+  type plus `MetricReport::bootstrap_ci(iterations, level, seed)` and
+  builder `MetricReport::with_bootstrap_ci(...)`. Uses a deterministic
+  SplitMix64 stream (no `rand` dependency) so the same seed reproduces
+  the same interval. `MetricCi` is `#[serde(default,
+  skip_serializing_if = "Option::is_none")]` so existing JSON reports
+  stay schema-compatible. `MetricDelta` carries `current_ci` /
+  `baseline_ci` alongside the existing mean delta.
+- Non-zero CI exit support on `ReportDiff`: `is_clean(&gate) -> bool`
+  and `exit_code(&gate) -> i32` (0 = pass, 1 = regression). Lets eval
+  binaries gate CI with `std::process::exit(diff.exit_code(&gate))`
+  without rebuilding the regression-walking logic at every call site.
+- `observe` feature: emit `MultiReport` and `ReportDiff` as
+  `rig-tap`-compatible JSON envelopes on the `rig_tap` tracing target
+  without depending on `rig-tap`. Introduces `EvalEnvelope` + `EvalKind`
+  (`eval.retrieval_report`, `eval.regression_diff`),
+  `report_envelopes`, `diff_envelopes`, and tracing helpers
+  `emit_report` / `emit_diff`. Each event carries the full JSON envelope
+  plus stable scalar `rig_tap.kind` / `rig_tap.metric` /
+  `rig_tap.regressed` / `rig_tap.conversation_id` attributes so existing
+  OpenTelemetry collectors route eval reports the same way they route
+  prompt and tool events.
+
+## [0.2.0] - 2026-05-24
+
+First tagged release after the initial unreleased line. Folds in optional
+RAGAS judges, the zero-waste ingestion pipeline (IoC + propositions +
+graph), shadow scoring, knowledge-gain scoring, embedding-novelty
+adapter, memory / models / agents behavior harnesses, the deterministic
+skills harness, RAGAS-as-skill grader, reliability (pass@k / pass^k),
+regression-gated baseline diffs, chunk-stat ingestion linting, and the
+default-feature staleness / conflict detector.
+
+### Added
+
+- New `staleness` module (default feature) for retrieval-time freshness
+  evaluation independent of the qrels grade. Ships `StalenessAnnotation`,
+  `CorpusVersions` (JSONL loader keyed by `doc_id`), `StaleHit` /
+  `StalenessReport`, `ConflictGroup` / `ConflictReport`, and two pure
+  detectors: `detect_stale_hits` flags top-k hits that are superseded by
+  a newer doc (explicit `superseded_by` or strictly-newer
+  `effective_timestamp` inside the same `version_key`); `detect_conflicts`
+  flags `version_key` collisions where the retriever surfaced multiple
+  generations of the same fact in one window. Re-exported from the crate
+  root. Committed fixture at `tests/data/tiny_corpus_versions.jsonl` and
+  integration coverage in `tests/staleness.rs`.
+- Ingestion chunk linting now includes encoding and optional language checks:
+  `EncodingLintWarning` reports control characters and BOMs, while
+  `LanguageLintConfig` uses `whatlang` to flag unknown-language rates and
+  detected languages outside a caller-supplied allow-list.
+- Add ingestion-local lexical novelty helpers:
+  `jaccard_knowledge_gain` and `corpus_jaccard_knowledge_gain`, plus
+  `IngestionDelta::knowledge_gain` / `with_knowledge_gain` for carrying the
+  resulting `[0, 1]` score alongside accepted/dropped ingestion outputs.
 
 ### Changed
 
@@ -105,7 +162,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   via `with_inputs_fn` for context-aware judges.
 - New optional `skills` feature: deterministic skill / agent evaluation
   harness alongside the existing retrieval one. Adds
-  `rig_evals_rag::skills::{SkillHarness, SkillTask, SkillTaskSet,
+  `rig_retrieval_evals::skills::{SkillHarness, SkillTask, SkillTaskSet,
   AgentRunner, Transcript, ToolCall, Usage, Grader, GraderOutcome,
   ContainsGrader, ToolCallGrader, TranscriptBudget, TriggerGrader,
   SkillEvalReport, TrialRow}`. The harness runs `(tasks × trials)`,
@@ -206,5 +263,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - JSON + Markdown report serialization and `MultiReport::diff` with
   `judge_fingerprint` mismatch detection.
 
-[Unreleased]: https://github.com/ForeverAngry/rig-evals-rag/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ForeverAngry/rig-evals-rag/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ForeverAngry/rig-retrieval-evals/releases/tag/v0.1.0

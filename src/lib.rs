@@ -1,4 +1,4 @@
-//! # rig-evals-rag
+//! # rig-retrieval-evals
 //!
 //! Retrieval and knowledge-base evaluation harness for
 //! [Rig](https://crates.io/crates/rig-core) agents.
@@ -35,12 +35,15 @@ pub mod knowledge_gain;
 pub mod memory;
 #[cfg(feature = "models")]
 pub mod models;
+#[cfg(feature = "observe")]
+pub mod observe;
 #[cfg(feature = "ragas")]
 pub mod ragas;
 pub mod report;
 pub mod retrieval;
 #[cfg(feature = "shadow")]
 pub mod shadow;
+pub mod staleness;
 
 #[cfg(feature = "agents")]
 pub use agents::{
@@ -67,13 +70,22 @@ pub use models::{
     ModelBehaviorHarness, ModelBehaviorReport, ModelBehaviorResult, ModelBehaviorTask,
     ModelBehaviorTaskSet, ModelObservation, ModelRunner,
 };
+#[cfg(feature = "observe")]
+pub use observe::{
+    EvalEnvelope, EvalKind, SCHEMA_VERSION as OBSERVE_SCHEMA_VERSION, diff_envelopes, emit_diff,
+    emit_report, report_envelopes,
+};
 pub use report::{
-    MetricDelta, MetricReport, MultiReport, QueryDelta, QueryReliability, RegressionGate,
+    MetricCi, MetricDelta, MetricReport, MultiReport, QueryDelta, QueryReliability, RegressionGate,
     ReliabilityReport, ReportDiff,
 };
 pub use retrieval::{HitRateAtK, MapAtK, Mrr, NdcgAtK, PrecisionAtK, RecallAtK, RetrievalMetric};
 #[cfg(feature = "shadow")]
 pub use shadow::{EvalShadowStore, ShadowEvalReport};
+pub use staleness::{
+    ConflictGroup, ConflictReport, CorpusVersions, StaleHit, StalenessAnnotation, StalenessReport,
+    detect_conflicts, detect_stale_hits,
+};
 
 #[cfg(feature = "ingestion")]
 pub mod ingestion;
@@ -88,10 +100,11 @@ pub use ingestion::PetgraphBaseline;
 pub use ingestion::{
     ActiveGraphTrack, ActivePropositionTrack, Chunk, ChunkLintConfig, ChunkLintReport,
     ChunkLintWarning, ChunkStats, DistillationPipeline, Document, Dropped, DroppedItem,
-    DroppedReason, GraphBaseline, GraphTrack, InMemoryGraphBaseline, InMemoryIocBaseline,
-    IngestionDelta, IngestionReport, Ioc, IocBaseline, IocExtractor, IocKind,
-    LlmPropositionExtractor, LlmTripleExtractor, NoGraphTrack, NoPropositionTrack, Proposition,
-    PropositionExtractor, PropositionTrack, RedundancyCheck, RedundancyVerdict, RegexIocExtractor,
-    Section, SectionKind, StubPropositionExtractor, StubTripleExtractor, Triple, TripleExtractor,
-    VectorStoreRedundancyCheck, lint_chunks, lint_chunks_strict,
+    DroppedReason, EncodingLintWarning, GraphBaseline, GraphTrack, InMemoryGraphBaseline,
+    InMemoryIocBaseline, IngestionDelta, IngestionReport, Ioc, IocBaseline, IocExtractor, IocKind,
+    LanguageCount, LanguageLintConfig, LlmPropositionExtractor, LlmTripleExtractor, NoGraphTrack,
+    NoPropositionTrack, Proposition, PropositionExtractor, PropositionTrack, RedundancyCheck,
+    RedundancyVerdict, RegexIocExtractor, Section, SectionKind, StubPropositionExtractor,
+    StubTripleExtractor, Triple, TripleExtractor, VectorStoreRedundancyCheck,
+    corpus_jaccard_knowledge_gain, jaccard_knowledge_gain, lint_chunks, lint_chunks_strict,
 };

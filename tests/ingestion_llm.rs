@@ -18,7 +18,7 @@ use rig::{
     message::{Text, ToolCall, ToolFunction},
     streaming::StreamingCompletionResponse,
 };
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     Document, LlmPropositionExtractor, LlmTripleExtractor, Proposition, PropositionExtractor,
     Triple, TripleExtractor,
 };

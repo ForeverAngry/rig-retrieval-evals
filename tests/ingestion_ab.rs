@@ -14,7 +14,9 @@ use std::collections::HashMap;
 
 use rig::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter};
 use rig::wasm_compat::WasmCompatSend;
-use rig_evals_rag::{NdcgAtK, Qrels, RecallAtK, RegressionGate, RetrievalHarness, RetrievalMetric};
+use rig_retrieval_evals::{
+    NdcgAtK, Qrels, RecallAtK, RegressionGate, RetrievalHarness, RetrievalMetric,
+};
 use serde::Deserialize;
 
 /// Token-overlap mock store, parameterized by the document set it indexes.

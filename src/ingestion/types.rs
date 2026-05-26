@@ -8,7 +8,7 @@ use super::proposition::Proposition;
 
 /// A caller-parsed document fed to the [`DistillationPipeline`].
 ///
-/// `rig-evals-rag` does not parse PDFs/HTML; callers extract text upstream
+/// `rig-retrieval-evals` does not parse PDFs/HTML; callers extract text upstream
 /// and hand it over. `sections` is optional but recommended: later tracks
 /// route narrative text to the LLM-backed extractors and skip tables / code
 /// blocks where appropriate.
@@ -92,6 +92,11 @@ pub struct IngestionDelta {
     /// Surfaced for inspectability: every drop should be assertable in a
     /// test.
     pub dropped: Vec<Dropped>,
+    /// Lightweight lexical novelty score in `[0, 1]`, where `0` means no
+    /// new token-set information and `1` means fully novel. Defaults to
+    /// `0.0` for callers that do not run the ingestion knowledge-gain gate.
+    #[serde(default)]
+    pub knowledge_gain: f64,
 }
 
 impl IngestionDelta {
@@ -104,6 +109,13 @@ impl IngestionDelta {
     /// `true` if the document produced no net-new items in any track.
     pub fn is_empty(&self) -> bool {
         self.iocs.is_empty() && self.propositions.is_empty() && self.triples.is_empty()
+    }
+
+    /// Attach a lexical knowledge-gain score.
+    #[must_use]
+    pub fn with_knowledge_gain(mut self, knowledge_gain: f64) -> Self {
+        self.knowledge_gain = knowledge_gain.clamp(0.0, 1.0);
+        self
     }
 }
 

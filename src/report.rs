@@ -38,6 +38,33 @@ pub struct MetricReport {
     pub p95: f64,
     /// Per-query `(query_id, score)` pairs, in input order.
     pub per_query: Vec<(String, f64)>,
+    /// Optional bootstrap confidence interval for [`MetricReport::mean`].
+    /// Populated by [`MetricReport::with_bootstrap_ci`]. Serialized as
+    /// `"ci"` when present, omitted when `None` so existing reports stay
+    /// schema-compatible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci: Option<MetricCi>,
+}
+
+/// Bootstrap confidence interval for [`MetricReport::mean`].
+///
+/// Produced by [`MetricReport::bootstrap_ci`] using a deterministic
+/// percentile bootstrap: resample the per-query scores `iterations` times
+/// with replacement, take the empirical mean of each resample, and report
+/// the two-sided quantile interval for the requested `level`. The same
+/// `seed` yields the same interval on the same input, so CI gates and
+/// reproducibility tests don't need extra fixtures.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct MetricCi {
+    /// Lower bound of the confidence interval (inclusive).
+    pub lower: f64,
+    /// Upper bound of the confidence interval (inclusive).
+    pub upper: f64,
+    /// Two-sided coverage probability the interval was computed for,
+    /// e.g. `0.95` for a 95 % CI.
+    pub level: f64,
+    /// Number of bootstrap resamples drawn.
+    pub iterations: usize,
 }
 
 impl MetricReport {
@@ -58,6 +85,7 @@ impl MetricReport {
                 p50: 0.0,
                 p95: 0.0,
                 per_query,
+                ci: None,
             };
         }
         let scores: Vec<f64> = per_query.iter().map(|(_, s)| *s).collect();
@@ -87,8 +115,72 @@ impl MetricReport {
             p50,
             p95,
             per_query,
+            ci: None,
         }
     }
+
+    /// Compute a percentile-bootstrap confidence interval for
+    /// [`MetricReport::mean`] without mutating `self`.
+    ///
+    /// Returns `None` when there are no per-query scores or when
+    /// `iterations` / `level` are out of range (`iterations == 0`, or
+    /// `level` not strictly inside `(0.0, 1.0)`). Otherwise draws
+    /// `iterations` resamples of size `n` with replacement using a
+    /// deterministic SplitMix64 stream seeded by `seed`, and returns the
+    /// two-sided percentile interval at the requested `level`.
+    #[must_use]
+    pub fn bootstrap_ci(&self, iterations: usize, level: f64, seed: u64) -> Option<MetricCi> {
+        if self.per_query.is_empty() || iterations == 0 {
+            return None;
+        }
+        if !(level > 0.0 && level < 1.0) {
+            return None;
+        }
+        let scores: Vec<f64> = self.per_query.iter().map(|(_, s)| *s).collect();
+        let n = scores.len();
+        let mut state = seed;
+        let mut resample_means: Vec<f64> = Vec::with_capacity(iterations);
+        for _ in 0..iterations {
+            let mut sum = 0.0;
+            for _ in 0..n {
+                let r = splitmix64(&mut state);
+                let idx = (r as usize) % n;
+                sum += scores.get(idx).copied().unwrap_or(0.0);
+            }
+            resample_means.push(sum / n as f64);
+        }
+        resample_means.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let alpha = (1.0 - level) / 2.0;
+        let lower = percentile(&resample_means, alpha);
+        let upper = percentile(&resample_means, 1.0 - alpha);
+        Some(MetricCi {
+            lower,
+            upper,
+            level,
+            iterations,
+        })
+    }
+
+    /// Compute and attach a percentile-bootstrap confidence interval to
+    /// [`MetricReport::ci`]. See [`MetricReport::bootstrap_ci`] for the
+    /// algorithm and return-value semantics. Returns `self` so the call
+    /// chains directly off [`MetricReport::from_per_query`].
+    #[must_use]
+    pub fn with_bootstrap_ci(mut self, iterations: usize, level: f64, seed: u64) -> Self {
+        self.ci = self.bootstrap_ci(iterations, level, seed);
+        self
+    }
+}
+
+/// Deterministic SplitMix64 PRNG. Stable, dependency-free, and good
+/// enough for bootstrap resampling — we are not generating cryptographic
+/// material here.
+fn splitmix64(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
 }
 
 fn percentile(sorted: &[f64], q: f64) -> f64 {
@@ -137,7 +229,7 @@ pub struct QueryReliability {
 /// first, then pass@k and pass^k are estimated per query and averaged.
 ///
 /// ```
-/// use rig_evals_rag::{MetricReport, ReliabilityReport};
+/// use rig_retrieval_evals::{MetricReport, ReliabilityReport};
 ///
 /// let trial_a = MetricReport::from_per_query(
 ///     "recall@10".into(),
@@ -156,7 +248,7 @@ pub struct QueryReliability {
 /// )?;
 /// assert_eq!(reliability.n_queries, 2);
 /// assert_eq!(reliability.trials_per_query, 2);
-/// # Ok::<(), rig_evals_rag::Error>(())
+/// # Ok::<(), rig_retrieval_evals::Error>(())
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReliabilityReport {
@@ -475,6 +567,8 @@ impl MultiReport {
                 losers,
                 unchanged,
                 query_changes,
+                current_ci: m.ci,
+                baseline_ci: base.and_then(|b| b.ci),
             });
         }
         Ok(ReportDiff { rows })
@@ -553,6 +647,12 @@ pub struct MetricDelta {
     /// baseline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub query_changes: Vec<QueryDelta>,
+    /// Bootstrap CI on the current report's mean, if it was computed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_ci: Option<MetricCi>,
+    /// Bootstrap CI on the baseline report's mean, if it was computed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_ci: Option<MetricCi>,
 }
 
 /// Per-query score change for a single metric, produced by
@@ -622,6 +722,23 @@ impl ReportDiff {
             .cloned()
             .collect()
     }
+
+    /// True when [`ReportDiff::regressions`] returns no rows for `gate`.
+    /// Convenience accessor for CI scripts that just want a yes / no.
+    #[must_use]
+    pub fn is_clean(&self, gate: &RegressionGate) -> bool {
+        self.regressions(gate).is_empty()
+    }
+
+    /// Process exit code suitable for `std::process::exit` in a CI eval
+    /// binary: `0` when the diff passes `gate`, `1` when one or more
+    /// metrics regress beyond their tolerated drop. Mirrors the
+    /// long-standing UNIX convention of `0 = success, non-zero = failure`
+    /// and is the single bit consumers should branch on.
+    #[must_use]
+    pub fn exit_code(&self, gate: &RegressionGate) -> i32 {
+        if self.is_clean(gate) { 0 } else { 1 }
+    }
 }
 
 /// Threshold-based regression gate over a [`ReportDiff`].
@@ -632,7 +749,7 @@ impl ReportDiff {
 /// to zero on insert.
 ///
 /// ```
-/// use rig_evals_rag::RegressionGate;
+/// use rig_retrieval_evals::RegressionGate;
 ///
 /// let gate = RegressionGate::new()
 ///     .with_threshold("recall@10", 0.02)
@@ -907,5 +1024,86 @@ mod tests {
         assert_eq!(parsed.metric, "recall@10");
         assert_eq!(parsed.per_query.len(), 1);
         assert!((parsed.pass_at_k - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bootstrap_ci_brackets_the_mean_for_well_separated_scores() {
+        let r = MetricReport::from_per_query(
+            "recall@10".into(),
+            (0..50)
+                .map(|i| (format!("q{i}"), if i % 2 == 0 { 0.8 } else { 0.6 }))
+                .collect(),
+        )
+        .with_bootstrap_ci(1000, 0.95, 0xC0FFEE);
+        let ci = r.ci.unwrap();
+        assert!(ci.lower < r.mean);
+        assert!(ci.upper > r.mean);
+        assert!(ci.lower >= 0.6 - 1e-9);
+        assert!(ci.upper <= 0.8 + 1e-9);
+        assert_eq!(ci.iterations, 1000);
+        assert!((ci.level - 0.95).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bootstrap_ci_is_deterministic_for_a_fixed_seed() {
+        let scores: Vec<(String, f64)> = (0..30)
+            .map(|i| (format!("q{i}"), (i % 5) as f64 / 4.0))
+            .collect();
+        let a = MetricReport::from_per_query("m".into(), scores.clone())
+            .with_bootstrap_ci(500, 0.9, 42)
+            .ci
+            .unwrap();
+        let b = MetricReport::from_per_query("m".into(), scores)
+            .with_bootstrap_ci(500, 0.9, 42)
+            .ci
+            .unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn bootstrap_ci_rejects_invalid_input() {
+        let r = MetricReport::from_per_query("m".into(), vec![("q1".into(), 0.5)]);
+        assert!(r.bootstrap_ci(0, 0.95, 1).is_none());
+        assert!(r.bootstrap_ci(100, 0.0, 1).is_none());
+        assert!(r.bootstrap_ci(100, 1.0, 1).is_none());
+        let empty = MetricReport::from_per_query("m".into(), vec![]);
+        assert!(empty.bootstrap_ci(100, 0.95, 1).is_none());
+    }
+
+    #[test]
+    fn report_diff_exit_code_signals_regression() {
+        let baseline = MultiReport::new(vec![MetricReport::from_per_query(
+            "recall@10".into(),
+            vec![("q1".into(), 0.9), ("q2".into(), 0.9)],
+        )]);
+        let candidate = MultiReport::new(vec![MetricReport::from_per_query(
+            "recall@10".into(),
+            vec![("q1".into(), 0.4), ("q2".into(), 0.4)],
+        )]);
+        let diff = candidate.diff(&baseline).unwrap();
+        let gate = RegressionGate::new().with_threshold("recall@10", 0.05);
+        assert!(!diff.is_clean(&gate));
+        assert_eq!(diff.exit_code(&gate), 1);
+
+        let lax_gate = RegressionGate::new().with_threshold("recall@10", 1.0);
+        assert!(diff.is_clean(&lax_gate));
+        assert_eq!(diff.exit_code(&lax_gate), 0);
+    }
+
+    #[test]
+    fn report_diff_carries_bootstrap_ci_on_both_sides() {
+        let scores: Vec<(String, f64)> = (0..20).map(|i| (format!("q{i}"), 0.5)).collect();
+        let candidate = MultiReport::new(vec![
+            MetricReport::from_per_query("recall@10".into(), scores.clone())
+                .with_bootstrap_ci(200, 0.95, 7),
+        ]);
+        let baseline = MultiReport::new(vec![
+            MetricReport::from_per_query("recall@10".into(), scores)
+                .with_bootstrap_ci(200, 0.95, 7),
+        ]);
+        let diff = candidate.diff(&baseline).unwrap();
+        let row = diff.rows.first().unwrap();
+        assert!(row.current_ci.is_some());
+        assert!(row.baseline_ci.is_some());
     }
 }

@@ -6,8 +6,8 @@
 
 use std::future::Future;
 
-use rig_evals_rag::Result;
-use rig_evals_rag::skills::{
+use rig_retrieval_evals::Result;
+use rig_retrieval_evals::skills::{
     AgentRunner, AsyncGrader, ContainsGrader, SkillHarness, SkillTask, SkillTaskSet, ToolCall,
     ToolCallGrader, Transcript, TriggerGrader,
 };

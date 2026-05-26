@@ -25,9 +25,9 @@ pub type RagasInputsFn = Arc<dyn Fn(&SkillTask, &Transcript) -> RagasInputs + Se
 ///
 /// ```no_run
 /// # use std::sync::Arc;
-/// # use rig_evals_rag::ragas::{RagasInputs, RagasMetric, RagasScore};
-/// # use rig_evals_rag::skills::RagasJudgeGrader;
-/// # use rig_evals_rag::Result;
+/// # use rig_retrieval_evals::ragas::{RagasInputs, RagasMetric, RagasScore};
+/// # use rig_retrieval_evals::skills::RagasJudgeGrader;
+/// # use rig_retrieval_evals::Result;
 /// # use std::future::Future;
 /// struct StubFaithfulness;
 /// impl RagasMetric for StubFaithfulness {

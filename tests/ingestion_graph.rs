@@ -8,7 +8,7 @@
     clippy::indexing_slicing
 )]
 
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     DistillationPipeline, Document, DroppedItem, DroppedReason, GraphBaseline,
     InMemoryGraphBaseline, InMemoryIocBaseline, RegexIocExtractor, StubTripleExtractor, Triple,
     TripleExtractor,
@@ -20,8 +20,8 @@ fn pipeline_for(
     DistillationPipeline<
         RegexIocExtractor,
         InMemoryIocBaseline,
-        rig_evals_rag::NoPropositionTrack,
-        rig_evals_rag::ActiveGraphTrack<StubTripleExtractor, InMemoryGraphBaseline>,
+        rig_retrieval_evals::NoPropositionTrack,
+        rig_retrieval_evals::ActiveGraphTrack<StubTripleExtractor, InMemoryGraphBaseline>,
     >,
 ) {
     let pipeline = DistillationPipeline::new(
@@ -199,7 +199,7 @@ async fn empty_doc_with_track2_enabled_returns_empty_delta() {
 #[cfg(feature = "ingestion-graph")]
 mod petgraph_baseline {
     use super::*;
-    use rig_evals_rag::PetgraphBaseline;
+    use rig_retrieval_evals::PetgraphBaseline;
 
     #[tokio::test]
     async fn petgraph_baseline_basic_insert_and_contains() {

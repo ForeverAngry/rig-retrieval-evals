@@ -10,12 +10,12 @@
 //! conflating the contracts.
 //!
 //! ```no_run
-//! # async fn demo<M, E>(model: M, embedder: E) -> Result<(), rig_evals_rag::Error>
+//! # async fn demo<M, E>(model: M, embedder: E) -> Result<(), rig_retrieval_evals::Error>
 //! # where
 //! #   M: rig::completion::CompletionModel + Clone + Send + Sync + 'static,
 //! #   E: rig::embeddings::EmbeddingModel + Clone + Send + Sync + 'static,
 //! # {
-//! use rig_evals_rag::ragas::{
+//! use rig_retrieval_evals::ragas::{
 //!     AnswerRelevanceMetric, DynRagasMetric, FaithfulnessMetric, RagasHarness, RagasInputs,
 //! };
 //!

@@ -21,7 +21,7 @@
 //! ## Example
 //!
 //! ```
-//! use rig_evals_rag::ingestion::lint::{Chunk, ChunkLintConfig, lint_chunks};
+//! use rig_retrieval_evals::ingestion::lint::{Chunk, ChunkLintConfig, lint_chunks};
 //!
 //! let chunks = vec![
 //!     Chunk::new("a", "The quick brown fox jumps over the lazy dog."),
@@ -33,7 +33,7 @@
 //! assert!(report.has_warnings());
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -89,6 +89,8 @@ pub struct ChunkLintConfig {
     pub max_tiny_fraction: f64,
     /// Promote any warning to a hard error in [`lint_chunks_strict`].
     pub fatal: bool,
+    /// Optional language-detection gate.
+    pub language: LanguageLintConfig,
 }
 
 impl Default for ChunkLintConfig {
@@ -99,8 +101,41 @@ impl Default for ChunkLintConfig {
             near_empty_chars: 4,
             max_tiny_fraction: 0.10,
             fatal: false,
+            language: LanguageLintConfig::default(),
         }
     }
+}
+
+/// Language-detection knobs for [`lint_chunks`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LanguageLintConfig {
+    /// Enable language detection. Disabled by default to avoid changing
+    /// existing ingestion gates that only want shape/encoding lints.
+    pub enabled: bool,
+    /// Allowed ISO 639-3 language codes, lower-case (e.g. `"eng"`). Empty
+    /// means detect and report unknown rates only.
+    pub allowed_languages: Vec<String>,
+    /// Maximum fraction of chunks whose language could not be detected.
+    pub max_unknown_fraction: f64,
+}
+
+impl Default for LanguageLintConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            allowed_languages: Vec::new(),
+            max_unknown_fraction: 0.20,
+        }
+    }
+}
+
+/// Count for one detected language code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanguageCount {
+    /// ISO 639-3 language code returned by `whatlang`.
+    pub language: String,
+    /// Number of chunks detected as this language.
+    pub count: u64,
 }
 
 /// Deterministic, pure-data statistics for a chunk corpus. Char counts
@@ -125,6 +160,11 @@ pub struct ChunkStats {
     /// chunk. Counts every member of a duplicate group, not just the
     /// extras.
     pub duplicate_text: u64,
+    /// Total disallowed control characters, excluding common whitespace
+    /// controls (`\n`, `\r`, `\t`).
+    pub control_chars: u64,
+    /// Number of chunks containing a Unicode byte-order mark character.
+    pub bom_chunks: u64,
     /// Minimum chunk char count (0 if `count == 0`).
     pub min_chars: u64,
     /// Maximum chunk char count (0 if `count == 0`).
@@ -183,6 +223,43 @@ pub enum ChunkLintWarning {
         /// How many chunks lacked an `id`.
         count: u64,
     },
+    /// Encoding-level warning such as control characters or BOMs.
+    Encoding {
+        /// Specific encoding warning.
+        warning: EncodingLintWarning,
+    },
+    /// Too many chunks had no detectable language.
+    UnknownLanguage {
+        /// Unknown-language chunk count.
+        count: u64,
+        /// Total chunk count.
+        total: u64,
+        /// Configured maximum fraction.
+        max_fraction: f64,
+    },
+    /// Detected language codes outside the configured allow-list.
+    DisallowedLanguages {
+        /// Disallowed language counts.
+        languages: Vec<LanguageCount>,
+        /// Allowed language codes from the config.
+        allowed: Vec<String>,
+    },
+}
+
+/// Encoding-specific lint warning.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EncodingLintWarning {
+    /// One or more disallowed control characters were found.
+    ControlCharacters {
+        /// Total control characters across all chunks.
+        count: u64,
+    },
+    /// One or more chunks contained a Unicode byte-order mark.
+    ByteOrderMarks {
+        /// Number of chunks containing a BOM character.
+        count: u64,
+    },
 }
 
 /// Final lint output: deterministic [`ChunkStats`] plus zero or more
@@ -225,10 +302,20 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
     let mut tiny = 0u64;
     let mut giant = 0u64;
     let mut missing_ids = 0u64;
+    let mut control_chars = 0u64;
+    let mut bom_chunks = 0u64;
+    let mut unknown_language = 0u64;
     let mut min_chars = u64::MAX;
     let mut max_chars = 0u64;
     let mut total_chars = 0u128;
     let mut text_counts: HashMap<&str, u64> = HashMap::with_capacity(chunks.len());
+    let mut language_counts: BTreeMap<String, u64> = BTreeMap::new();
+    let allowed_languages: Vec<String> = config
+        .language
+        .allowed_languages
+        .iter()
+        .map(|lang| lang.to_ascii_lowercase())
+        .collect();
 
     for chunk in chunks {
         if chunk.id.is_none() {
@@ -245,6 +332,26 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
         }
         if len > config.giant_chars as u64 {
             giant = giant.saturating_add(1);
+        }
+        let bad_controls = chunk
+            .text
+            .chars()
+            .filter(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+            .count() as u64;
+        control_chars = control_chars.saturating_add(bad_controls);
+        if chunk.text.contains('\u{feff}') {
+            bom_chunks = bom_chunks.saturating_add(1);
+        }
+        if config.language.enabled && !chunk.text.trim().is_empty() {
+            match whatlang::detect(&chunk.text) {
+                Some(info) => {
+                    let code = info.lang().code().to_ascii_lowercase();
+                    *language_counts.entry(code).or_insert(0) += 1;
+                }
+                None => {
+                    unknown_language = unknown_language.saturating_add(1);
+                }
+            }
         }
         min_chars = min_chars.min(len);
         max_chars = max_chars.max(len);
@@ -266,6 +373,8 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
         giant,
         missing_ids,
         duplicate_text,
+        control_chars,
+        bom_chunks,
         min_chars,
         max_chars,
         mean_chars,
@@ -304,6 +413,44 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
     }
     if missing_ids > 0 {
         warnings.push(ChunkLintWarning::MissingIds { count: missing_ids });
+    }
+    if control_chars > 0 {
+        warnings.push(ChunkLintWarning::Encoding {
+            warning: EncodingLintWarning::ControlCharacters {
+                count: control_chars,
+            },
+        });
+    }
+    if bom_chunks > 0 {
+        warnings.push(ChunkLintWarning::Encoding {
+            warning: EncodingLintWarning::ByteOrderMarks { count: bom_chunks },
+        });
+    }
+    if config.language.enabled {
+        let unknown_fraction = unknown_language as f64 / count as f64;
+        if unknown_fraction > config.language.max_unknown_fraction {
+            warnings.push(ChunkLintWarning::UnknownLanguage {
+                count: unknown_language,
+                total: count,
+                max_fraction: config.language.max_unknown_fraction,
+            });
+        }
+        if !allowed_languages.is_empty() {
+            let disallowed = language_counts
+                .iter()
+                .filter(|(language, _count)| !allowed_languages.contains(language))
+                .map(|(language, count)| LanguageCount {
+                    language: language.clone(),
+                    count: *count,
+                })
+                .collect::<Vec<_>>();
+            if !disallowed.is_empty() {
+                warnings.push(ChunkLintWarning::DisallowedLanguages {
+                    languages: disallowed,
+                    allowed: allowed_languages,
+                });
+            }
+        }
     }
 
     ChunkLintReport { stats, warnings }
@@ -369,6 +516,9 @@ mod tests {
                 ChunkLintWarning::GiantChunks { .. } => "giant",
                 ChunkLintWarning::DuplicateChunks { .. } => "dup",
                 ChunkLintWarning::MissingIds { .. } => "missing",
+                ChunkLintWarning::Encoding { .. } => "encoding",
+                ChunkLintWarning::UnknownLanguage { .. } => "unknown_language",
+                ChunkLintWarning::DisallowedLanguages { .. } => "language",
             })
             .collect();
         assert!(kinds.contains(&"empty"));
@@ -410,5 +560,58 @@ mod tests {
         let json = report.to_json().unwrap();
         let parsed: ChunkLintReport = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, report);
+    }
+
+    #[test]
+    fn lint_flags_encoding_artifacts() {
+        let chunks = vec![
+            Chunk::new("bom", "\u{feff}starts with a byte order mark"),
+            Chunk::new("ctrl", "contains \u{0007} bell"),
+        ];
+
+        let report = lint_chunks(&chunks, &ChunkLintConfig::default());
+
+        assert_eq!(report.stats.bom_chunks, 1);
+        assert_eq!(report.stats.control_chars, 1);
+        assert!(report.warnings.iter().any(|warning| matches!(
+            warning,
+            ChunkLintWarning::Encoding {
+                warning: EncodingLintWarning::ByteOrderMarks { count: 1 }
+            }
+        )));
+        assert!(report.warnings.iter().any(|warning| matches!(
+            warning,
+            ChunkLintWarning::Encoding {
+                warning: EncodingLintWarning::ControlCharacters { count: 1 }
+            }
+        )));
+    }
+
+    #[test]
+    fn language_lint_flags_disallowed_languages() {
+        let chunks = vec![
+            Chunk::new("en", "This is an English technical report about retrieval."),
+            Chunk::new(
+                "fr",
+                "Bonjour, ceci est un rapport technique sur la recherche.",
+            ),
+        ];
+        let config = ChunkLintConfig {
+            language: LanguageLintConfig {
+                enabled: true,
+                allowed_languages: vec!["eng".into()],
+                max_unknown_fraction: 1.0,
+            },
+            ..ChunkLintConfig::default()
+        };
+
+        let report = lint_chunks(&chunks, &config);
+
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| matches!(warning, ChunkLintWarning::DisallowedLanguages { .. }))
+        );
     }
 }

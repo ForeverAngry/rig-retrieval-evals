@@ -5,13 +5,13 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use rig_evals_rag::{
-    CandidateDocumentGainInput, EvalShadowStore, HitRateAtK, KnowledgeGainConfig,
-    KnowledgeGainReport, Mrr, NdcgAtK, Qrels, RecallAtK, RetrievalMetric,
-};
 use rig_memvid::{
     CardSelection, MemoryCardContext, MemvidStore,
     memvid_core::{MemoryCard, MemoryCardBuilder, Polarity, PutOptions},
+};
+use rig_retrieval_evals::{
+    CandidateDocumentGainInput, EvalShadowStore, HitRateAtK, KnowledgeGainConfig,
+    KnowledgeGainReport, Mrr, NdcgAtK, Qrels, RecallAtK, RetrievalMetric,
 };
 use serde::Deserialize;
 

@@ -1,11 +1,11 @@
 # AGENTS.md
 
-Guidance for AI coding agents working in `rig-evals-rag`. Mirrors
+Guidance for AI coding agents working in `rig-retrieval-evals`. Mirrors
 [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
 ## Project
 
-`rig-evals-rag` is a retrieval-quality evaluation harness for any
+`rig-retrieval-evals` is a retrieval-quality evaluation harness for any
 [`rig`](https://crates.io/crates/rig-core) `VectorStoreIndex`. Public
 primitives:
 

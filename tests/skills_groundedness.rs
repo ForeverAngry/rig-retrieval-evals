@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use rig::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter};
 use rig::wasm_compat::WasmCompatSend;
-use rig_evals_rag::Result;
-use rig_evals_rag::skills::{
+use rig_retrieval_evals::Result;
+use rig_retrieval_evals::skills::{
     AgentRunner, AsyncGrader, RetrievalGroundednessGrader, SkillHarness, SkillTask, SkillTaskSet,
     Transcript,
 };

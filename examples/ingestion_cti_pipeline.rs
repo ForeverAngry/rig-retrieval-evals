@@ -3,7 +3,7 @@ use std::env;
 use rig::client::CompletionClient;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::ollama::Client;
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     DistillationPipeline, Document, InMemoryGraphBaseline, InMemoryIocBaseline, Proposition,
     RedundancyCheck, RedundancyVerdict, RegexIocExtractor, Result,
     ingestion::llm::{LlmPropositionExtractor, LlmTripleExtractor},

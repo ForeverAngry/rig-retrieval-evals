@@ -1,8 +1,8 @@
-//! Error types for `rig-evals-rag`.
+//! Error types for `rig-retrieval-evals`.
 
 use rig::vector_store::VectorStoreError;
 
-/// Errors produced by `rig-evals-rag`.
+/// Errors produced by `rig-retrieval-evals`.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Failed to parse a qrels / corpus / answers JSONL file.

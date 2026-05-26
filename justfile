@@ -1,4 +1,4 @@
-# rig-evals-rag task runner.
+# rig-retrieval-evals task runner.
 #
 # Install just: https://github.com/casey/just
 #   brew install just

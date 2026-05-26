@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use rig::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter};
 use rig::wasm_compat::WasmCompatSend;
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     HitRateAtK, MapAtK, Mrr, NdcgAtK, PrecisionAtK, Qrels, RecallAtK, RetrievalHarness,
     RetrievalMetric,
 };
@@ -154,7 +154,7 @@ async fn harness_drives_mock_store_end_to_end() {
 
     // Round-trip through JSON and back.
     let json = report.to_json().unwrap();
-    let parsed: rig_evals_rag::MultiReport = serde_json::from_str(&json).unwrap();
+    let parsed: rig_retrieval_evals::MultiReport = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.metrics.len(), 6);
 
     // Markdown rendering is non-empty.
@@ -173,7 +173,7 @@ async fn harness_rejects_zero_k() {
         .await
         .unwrap_err();
     match err {
-        rig_evals_rag::Error::Config(_) => {}
+        rig_retrieval_evals::Error::Config(_) => {}
         other => panic!("unexpected error: {other:?}"),
     }
 }

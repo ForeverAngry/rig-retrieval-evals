@@ -73,7 +73,7 @@ where
     async fn run<'a>(&'a self, doc: &'a Document, delta: &'a mut IngestionDelta) -> Result<()> {
         let candidates = self.extractor.extract(doc).await?;
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             candidate_count = candidates.len(),
             "track 3: candidate propositions extracted"
@@ -92,7 +92,7 @@ where
             }
         }
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             new = delta.propositions.len(),
             "track 3: delta updated"
@@ -219,7 +219,7 @@ where
         // Track 1: deterministic IoC set difference.
         let candidates = self.extractor.extract(doc);
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             candidate_count = candidates.len(),
             "track 1: candidate IoCs extracted"
@@ -235,7 +235,7 @@ where
             }
         }
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             new = delta.iocs.len(),
             dropped = delta.dropped.len(),
@@ -308,7 +308,7 @@ where
     async fn run<'a>(&'a self, doc: &'a Document, delta: &'a mut IngestionDelta) -> Result<()> {
         let candidates = self.extractor.extract(doc).await?;
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             candidate_count = candidates.len(),
             "track 2: candidate triples extracted"
@@ -324,7 +324,7 @@ where
             }
         }
         tracing::debug!(
-            target: "rig_evals_rag::ingestion::pipeline",
+            target: "rig_retrieval_evals::ingestion::pipeline",
             doc_id = %doc.id,
             new = delta.triples.len(),
             "track 2: delta updated"

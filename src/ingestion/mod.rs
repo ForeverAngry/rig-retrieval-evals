@@ -1,6 +1,6 @@
 //! Zero-waste ingestion pipeline.
 //!
-//! `rig-evals-rag` traditionally measures retrieval quality after documents
+//! `rig-retrieval-evals` traditionally measures retrieval quality after documents
 //! land in a store. The ingestion pipeline moves that gate upstream: only
 //! commit deltas (net-new IoCs, graph edges, propositions) so the vector
 //! store never accumulates redundant chunks.
@@ -35,10 +35,10 @@
 //! ## Example
 //!
 //! ```no_run
-//! # use rig_evals_rag::{
+//! # use rig_retrieval_evals::{
 //! #     DistillationPipeline, Document, InMemoryIocBaseline, RegexIocExtractor,
 //! # };
-//! # async fn demo() -> Result<(), rig_evals_rag::Error> {
+//! # async fn demo() -> Result<(), rig_retrieval_evals::Error> {
 //! let pipeline = DistillationPipeline::new(
 //!     RegexIocExtractor::new()?,
 //!     InMemoryIocBaseline::new(),
@@ -55,6 +55,7 @@
 
 mod graph;
 mod ioc;
+mod knowledge_gain;
 pub mod lint;
 mod pipeline;
 mod proposition;
@@ -67,9 +68,10 @@ pub use graph::{
     GraphBaseline, InMemoryGraphBaseline, StubTripleExtractor, Triple, TripleExtractor,
 };
 pub use ioc::{InMemoryIocBaseline, Ioc, IocBaseline, IocExtractor, IocKind, RegexIocExtractor};
+pub use knowledge_gain::{corpus_jaccard_knowledge_gain, jaccard_knowledge_gain};
 pub use lint::{
-    Chunk, ChunkLintConfig, ChunkLintReport, ChunkLintWarning, ChunkStats, lint_chunks,
-    lint_chunks_strict,
+    Chunk, ChunkLintConfig, ChunkLintReport, ChunkLintWarning, ChunkStats, EncodingLintWarning,
+    LanguageCount, LanguageLintConfig, lint_chunks, lint_chunks_strict,
 };
 pub use pipeline::{
     ActiveGraphTrack, ActivePropositionTrack, DistillationPipeline, GraphTrack, NoGraphTrack,

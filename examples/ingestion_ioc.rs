@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo run --example ingestion_ioc --features ingestion`
 
-use rig_evals_rag::{DistillationPipeline, Document, InMemoryIocBaseline, RegexIocExtractor};
+use rig_retrieval_evals::{DistillationPipeline, Document, InMemoryIocBaseline, RegexIocExtractor};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -2,13 +2,13 @@
 //! [`VectorStoreIndexDyn`] and aggregates per-query metric scores.
 //!
 //! ```no_run
-//! use rig_evals_rag::{
+//! use rig_retrieval_evals::{
 //!     dataset::Qrels,
 //!     harness::RetrievalHarness,
 //!     retrieval::{NdcgAtK, RecallAtK, RetrievalMetric},
 //! };
 //!
-//! # async fn run<I>(store: I) -> Result<(), rig_evals_rag::Error>
+//! # async fn run<I>(store: I) -> Result<(), rig_retrieval_evals::Error>
 //! # where
 //! #   I: rig::vector_store::VectorStoreIndexDyn + 'static,
 //! # {

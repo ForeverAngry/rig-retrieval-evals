@@ -1,23 +1,23 @@
-# rig-evals-rag
+# rig-retrieval-evals
 
-[![Crates.io](https://img.shields.io/crates/v/rig-evals-rag.svg)](https://crates.io/crates/rig-evals-rag)
-[![Docs.rs](https://docs.rs/rig-evals-rag/badge.svg)](https://docs.rs/rig-evals-rag)
+[![Crates.io](https://img.shields.io/crates/v/rig-retrieval-evals.svg)](https://crates.io/crates/rig-retrieval-evals)
+[![Docs.rs](https://docs.rs/rig-retrieval-evals/badge.svg)](https://docs.rs/rig-retrieval-evals)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 > Retrieval and knowledge-base evaluation harness for
 > [Rig](https://crates.io/crates/rig-core) agents.
 
-`rig-evals-rag` measures **knowledge-base quality**, not just answer quality.
+`rig-retrieval-evals` measures **knowledge-base quality**, not just answer quality.
 Point it at any `VectorStoreIndex` (`rig`'s in-memory store, `rig-memvid`,
 `rig-lancedb`, …), give it a labeled qrels file, and get a report you can
 diff between runs to catch regressions before they ship.
 
 ## Status
 
-The default build ships **retrieval-quality** evaluation only. The current
-unreleased branch also contains optional RAGAS judges, zero-waste ingestion
-tracks, shadow scoring, and model-free knowledge-gain scoring behind feature
-flags.
+The default build ships **retrieval-quality** evaluation plus stale /
+conflict detection. Optional RAGAS judges, zero-waste ingestion tracks,
+shadow scoring, and model-free knowledge-gain scoring live behind
+feature flags.
 
 | Capability | Default | Feature | Validation |
 | --- | :---: | --- | --- |
@@ -26,6 +26,7 @@ flags.
 | Async `RetrievalHarness` over any `VectorStoreIndexDyn` | ✅ | `retrieval` | `tests/harness.rs` |
 | JSON / Markdown reports + baseline diff | ✅ | `retrieval` | Report unit tests + harness test |
 | Repeated-trial pass@k / pass^k reliability reports | ✅ | `retrieval` | Report unit tests |
+| Stale-content + `version_key` conflict detection | ✅ | `retrieval` | `tests/staleness.rs` |
 | Pre/post shadow-store scoring | — | `shadow` | `tests/shadow.rs` |
 | Model-free knowledge-gain scoring | — | `knowledge-gain` | Unit tests + `eval_memvid` |
 | Candidate-document gain ranking + host novelty | — | `knowledge-gain` | Unit tests + `eval_memvid` |
@@ -53,7 +54,7 @@ Cross-crate coordination lives in
 | --- | --- | --- |
 | `retrieval` | yes | Pure-Rust retrieval metrics, qrels loading, harness, reports, and diffs. |
 | `ragas` | no | LLM-backed RAGAS-style judges and `RagasHarness`. |
-| `ingestion` | no | Zero-waste ingestion Track 1 (IoCs), Track 3 (propositions), and LLM extractor adapters. |
+| `ingestion` | no | Zero-waste ingestion Track 1 (IoCs), Track 3 (propositions), chunk linting with encoding/language checks, lexical knowledge gain, and LLM extractor adapters. |
 | `ingestion-graph` | no | Track 2 knowledge-graph triples plus `petgraph`-backed baseline. Implies `ingestion`. |
 | `embedding-novelty` | no | `EmbeddingNoveltyAdapter` over a host-provided `rig::embeddings::EmbeddingModel`. Implies `knowledge-gain`. |
 | `knowledge-gain` | no | `KnowledgeGainReport` for weighted candidate-minus-baseline scoring, candidate-document ranking, and host-supplied novelty from a `ReportDiff`. Implies `shadow`. |
@@ -68,7 +69,7 @@ Cross-crate coordination lives in
 ```rust,no_run
 use anyhow::Result;
 use rig::vector_store::VectorStoreIndexDyn;
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     NdcgAtK, Qrels, RecallAtK, RetrievalHarness, RetrievalMetric,
 };
 
@@ -93,7 +94,7 @@ std::fs::write("report.json", report.to_json()?)?;
 ### Diffing against a baseline
 
 ```rust,no_run
-# use rig_evals_rag::MultiReport;
+# use rig_retrieval_evals::MultiReport;
 # fn read(p: &str) -> anyhow::Result<MultiReport> { unimplemented!() }
 # fn demo() -> anyhow::Result<()> {
 let current  = read("report.json")?;
@@ -114,8 +115,8 @@ candidate against baseline.
 
 ```rust,no_run
 # use rig::vector_store::VectorStoreIndexDyn;
-# use rig_evals_rag::{EvalShadowStore, Qrels, RecallAtK, RetrievalMetric};
-# async fn demo(before: &dyn VectorStoreIndexDyn, after: &dyn VectorStoreIndexDyn, qrels: &Qrels) -> rig_evals_rag::Result<()> {
+# use rig_retrieval_evals::{EvalShadowStore, Qrels, RecallAtK, RetrievalMetric};
+# async fn demo(before: &dyn VectorStoreIndexDyn, after: &dyn VectorStoreIndexDyn, qrels: &Qrels) -> rig_retrieval_evals::Result<()> {
 let metrics: Vec<Box<dyn RetrievalMetric>> = vec![Box::new(RecallAtK::new(5))];
 let shadow = EvalShadowStore::new(before, after, 5)
     .with_concurrency(2)
@@ -139,7 +140,7 @@ blend in host-supplied novelty scores without requiring this crate to own an
 embedding model.
 
 ```rust,no_run
-# use rig_evals_rag::{CandidateDocumentGainInput, KnowledgeGainConfig, KnowledgeGainReport, Qrels, ReportDiff};
+# use rig_retrieval_evals::{CandidateDocumentGainInput, KnowledgeGainConfig, KnowledgeGainReport, Qrels, ReportDiff};
 # fn demo(diff: &ReportDiff, qrels: &Qrels) {
 let config = KnowledgeGainConfig::new()
     .with_metric_weight("recall@5", 2.0)
@@ -162,8 +163,8 @@ batches in parallel via `buffered(n)`.
 
 ```rust,no_run
 # use rig::embeddings::EmbeddingModel;
-# use rig_evals_rag::{CandidateNoveltyInput, EmbeddingNoveltyAdapter};
-# async fn demo<M: EmbeddingModel>(model: M) -> rig_evals_rag::Result<()> {
+# use rig_retrieval_evals::{CandidateNoveltyInput, EmbeddingNoveltyAdapter};
+# async fn demo<M: EmbeddingModel>(model: M) -> rig_retrieval_evals::Result<()> {
 let adapter = EmbeddingNoveltyAdapter::new(model).with_concurrency(4);
 let candidates = [CandidateNoveltyInput::new(
     "doc-7",
@@ -203,7 +204,7 @@ observation into the same `MetricReport` layer used by retrieval.
 ```rust,no_run
 # use std::future::Future;
 # use std::pin::Pin;
-# use rig_evals_rag::{ModelBehaviorHarness, ModelBehaviorTask, ModelBehaviorTaskSet, ModelObservation, ModelRunner, Result};
+# use rig_retrieval_evals::{ModelBehaviorHarness, ModelBehaviorTask, ModelBehaviorTaskSet, ModelObservation, ModelRunner, Result};
 # struct Runner;
 # impl ModelRunner for Runner {
 #     fn run<'a>(&'a self, _: &'a ModelBehaviorTask) -> Pin<Box<dyn Future<Output = Result<ModelObservation>> + Send + 'a>> {
@@ -230,7 +231,7 @@ multiple times and aggregate the resulting `MetricReport`s into pass@k and
 pass^k estimates:
 
 ```rust,no_run
-# use rig_evals_rag::{MetricReport, ReliabilityReport};
+# use rig_retrieval_evals::{MetricReport, ReliabilityReport};
 # fn demo(trials: Vec<MetricReport>) -> anyhow::Result<()> {
 let reliability = ReliabilityReport::from_metric_reports(
     "recall@10",
@@ -255,7 +256,15 @@ The ingestion feature family moves quality control upstream of vector-store
 commit. Instead of storing every chunk and hoping retrieval compensates later,
 the pipeline emits an `IngestionDelta` containing net-new IoCs, propositions,
 and graph triples plus structured drop reasons for duplicates or redundant
-facts.
+facts. The same feature includes `lint_chunks` for pre-embedding corpus shape
+checks; it now flags empty/tiny/giant/duplicate chunks, missing IDs, control
+characters, byte-order marks, and optional `whatlang` language allow-list
+violations through `LanguageLintConfig`.
+
+For cheap ingestion-delta scoring, `jaccard_knowledge_gain` and
+`corpus_jaccard_knowledge_gain` compute lexical novelty over normalized token
+sets. The resulting score can be carried on `IngestionDelta::knowledge_gain`
+with `with_knowledge_gain`.
 
 Deterministic extractors and baselines are the CI path. `LlmTripleExtractor`
 and `LlmPropositionExtractor` adapt Rig's structured `Extractor` for hosts that

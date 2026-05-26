@@ -8,7 +8,7 @@
     clippy::indexing_slicing
 )]
 
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     DistillationPipeline, Document, DroppedItem, DroppedReason, InMemoryIocBaseline, Ioc,
     IocExtractor, IocKind, RegexIocExtractor, Section, SectionKind,
 };

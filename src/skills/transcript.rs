@@ -76,7 +76,7 @@ impl ToolCall {
 
 /// Aggregated token / cost telemetry for a single trial.
 ///
-/// Matches the shape emitted by `rig-model-meta`'s `MetaHook` so wiring the
+/// Matches the shape emitted by `rig-model-catalog`'s `MetaHook` so wiring the
 /// two together is just a `From` impl on the caller side.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Usage {
@@ -87,7 +87,7 @@ pub struct Usage {
     #[serde(default)]
     pub output_tokens: u64,
     /// Optional per-trial cost in USD. Populate from
-    /// `rig_model_meta::PricingTable::cost_for_usage` if you need a
+    /// `rig_model_catalog::PricingTable::cost_for_usage` if you need a
     /// monetary efficiency dimension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_usd: Option<f64>,

@@ -1,0 +1,6 @@
+{"doc_id":"addr-2023","version_key":"alice:address","effective_timestamp":1672531200,"superseded_by":"addr-2025"}
+{"doc_id":"addr-2024","version_key":"alice:address","effective_timestamp":1704067200}
+{"doc_id":"addr-2025","version_key":"alice:address","effective_timestamp":1735689600}
+{"doc_id":"price-v1","version_key":"sku-7:price","effective_timestamp":100}
+{"doc_id":"price-v2","version_key":"sku-7:price","effective_timestamp":200}
+{"doc_id":"misc-doc"}

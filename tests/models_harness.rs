@@ -6,7 +6,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     ModelBehaviorHarness, ModelBehaviorTask, ModelBehaviorTaskSet, ModelObservation, ModelRunner,
     Result,
 };

@@ -1,5 +1,4 @@
-//! Fixture documenting the `ReportDiff` → evaluator-evidence handoff
-//! contract consumed by `rig-veh`.
+//! Fixture documenting the `ReportDiff` evaluator-evidence contract.
 //!
 //! The boundary is intentionally small: a [`MultiReport::diff`] result
 //! serialises to JSON via [`ReportDiff::to_json`], reloads via
@@ -7,13 +6,12 @@
 //! identically against either copy.
 //!
 //! Recommended metric names and threshold conventions used by
-//! downstream consumers (the upstream `rig-veh` retrieval evaluator
-//! and any host wrapping it) are codified here as test data so a
-//! schema drift surfaces as a test failure.
+//! downstream consumers are codified here as test data so a schema drift
+//! surfaces as a test failure.
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
-use rig_evals_rag::{MetricReport, MultiReport, RegressionGate, ReportDiff};
+use rig_retrieval_evals::{MetricReport, MultiReport, RegressionGate, ReportDiff};
 
 fn report(metric: &str, per_query: &[(&str, f64)]) -> MultiReport {
     MultiReport::new(vec![MetricReport::from_per_query(
@@ -26,8 +24,8 @@ fn report(metric: &str, per_query: &[(&str, f64)]) -> MultiReport {
 }
 
 /// A `ReportDiff` survives a JSON round-trip with a stable
-/// `RegressionGate` verdict. This is the shape `rig-veh` stores in
-/// `AgentNode::eval_results` when promoting / rejecting candidates.
+/// `RegressionGate` verdict. This is the shape host evaluators can store
+/// when promoting / rejecting candidates.
 #[test]
 fn report_diff_json_round_trips_with_stable_gate_verdict() {
     let baseline = report("recall@10", &[("q1", 0.6), ("q2", 0.7)]);
@@ -50,7 +48,7 @@ fn report_diff_json_round_trips_with_stable_gate_verdict() {
 }
 
 /// A non-regressing diff produces an empty regression set both live
-/// and after JSON reload — the contract `rig-veh` relies on for the
+/// and after JSON reload — the contract host evaluators rely on for the
 /// "promote" branch.
 #[test]
 fn report_diff_promotion_path_round_trips_clean() {

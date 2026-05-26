@@ -8,7 +8,7 @@
 //! improved retrieval against the supplied qrels.
 //!
 //! ```
-//! use rig_evals_rag::{KnowledgeGainConfig, KnowledgeGainReport, MetricDelta, ReportDiff};
+//! use rig_retrieval_evals::{KnowledgeGainConfig, KnowledgeGainReport, MetricDelta, ReportDiff};
 //!
 //! let diff = ReportDiff {
 //!     rows: vec![MetricDelta {
@@ -870,6 +870,8 @@ mod tests {
             losers: 0,
             unchanged: 0,
             query_changes,
+            current_ci: None,
+            baseline_ci: None,
         }
     }
 

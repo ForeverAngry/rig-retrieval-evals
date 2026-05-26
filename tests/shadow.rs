@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use rig::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter};
 use rig::wasm_compat::WasmCompatSend;
-use rig_evals_rag::{EvalShadowStore, Mrr, Qrels, RecallAtK, RetrievalMetric};
+use rig_retrieval_evals::{EvalShadowStore, Mrr, Qrels, RecallAtK, RetrievalMetric};
 use serde::Deserialize;
 
 struct MockStore {

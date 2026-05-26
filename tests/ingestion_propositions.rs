@@ -14,7 +14,7 @@ use std::sync::Mutex;
 
 use rig::vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter};
 use rig::wasm_compat::WasmCompatSend;
-use rig_evals_rag::{
+use rig_retrieval_evals::{
     DistillationPipeline, Document, DroppedItem, DroppedReason, InMemoryIocBaseline, Proposition,
     PropositionExtractor, RedundancyCheck, RedundancyVerdict, RegexIocExtractor,
     StubPropositionExtractor, VectorStoreRedundancyCheck,

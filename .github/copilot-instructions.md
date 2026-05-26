@@ -1,4 +1,4 @@
-# rig-evals-rag — Copilot Instructions
+# rig-retrieval-evals — Copilot Instructions
 
 See [AGENTS.md](../AGENTS.md) for the authoritative copy. Summary:
 
