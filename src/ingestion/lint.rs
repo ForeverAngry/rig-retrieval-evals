@@ -5,7 +5,7 @@
 //! chunk linter moves that gate upstream: it inspects the chunk corpus
 //! before any embedding, vector store, or LLM call and flags the
 //! pathological shapes that historically produce bad retrieval —
-//! micro-fragments, oversized chunks, exact duplicates, and missing IDs.
+//! micro-fragments, oversized chunks, exact/near duplicates, and missing IDs.
 //!
 //! The linter is pure-data on purpose:
 //!
@@ -91,6 +91,8 @@ pub struct ChunkLintConfig {
     pub fatal: bool,
     /// Optional language-detection gate.
     pub language: LanguageLintConfig,
+    /// Optional near-duplicate detection gate.
+    pub near_duplicates: NearDuplicateLintConfig,
 }
 
 impl Default for ChunkLintConfig {
@@ -102,6 +104,36 @@ impl Default for ChunkLintConfig {
             max_tiny_fraction: 0.10,
             fatal: false,
             language: LanguageLintConfig::default(),
+            near_duplicates: NearDuplicateLintConfig::default(),
+        }
+    }
+}
+
+/// MinHash-style near-duplicate detection knobs for [`lint_chunks`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NearDuplicateLintConfig {
+    /// Enable near-duplicate detection. Disabled by default so existing
+    /// shape-only lint gates remain stable until hosts opt in.
+    pub enabled: bool,
+    /// Number of normalized word tokens per shingle. Default 5.
+    pub shingle_tokens: usize,
+    /// Number of deterministic hash projections in each signature. Default 64.
+    pub signature_len: usize,
+    /// Minimum estimated Jaccard similarity that counts as near-duplicate.
+    /// Default 0.85.
+    pub threshold: f64,
+    /// Maximum example pairs to retain in the warning payload. Default 8.
+    pub max_examples: usize,
+}
+
+impl Default for NearDuplicateLintConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            shingle_tokens: 5,
+            signature_len: 64,
+            threshold: 0.85,
+            max_examples: 8,
         }
     }
 }
@@ -138,6 +170,20 @@ pub struct LanguageCount {
     pub count: u64,
 }
 
+/// Example pair whose MinHash signatures exceeded the configured
+/// near-duplicate threshold.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NearDuplicatePair {
+    /// Identifier for the first chunk, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_id: Option<String>,
+    /// Identifier for the second chunk, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_id: Option<String>,
+    /// Estimated Jaccard similarity from the MinHash signatures.
+    pub similarity: f64,
+}
+
 /// Deterministic, pure-data statistics for a chunk corpus. Char counts
 /// are used everywhere length appears.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,6 +206,9 @@ pub struct ChunkStats {
     /// chunk. Counts every member of a duplicate group, not just the
     /// extras.
     pub duplicate_text: u64,
+    /// Number of near-duplicate chunk pairs detected by the optional
+    /// MinHash-style gate.
+    pub near_duplicate_pairs: u64,
     /// Total disallowed control characters, excluding common whitespace
     /// controls (`\n`, `\r`, `\t`).
     pub control_chars: u64,
@@ -243,6 +292,15 @@ pub enum ChunkLintWarning {
         languages: Vec<LanguageCount>,
         /// Allowed language codes from the config.
         allowed: Vec<String>,
+    },
+    /// Near-duplicate chunk pairs exceeded the configured similarity threshold.
+    NearDuplicateChunks {
+        /// Total pair count across the corpus.
+        pairs: u64,
+        /// Configured similarity threshold.
+        threshold: f64,
+        /// Bounded example pairs, in deterministic corpus order.
+        examples: Vec<NearDuplicatePair>,
     },
 }
 
@@ -361,6 +419,11 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
 
     let duplicate_groups = text_counts.values().filter(|n| **n > 1).count() as u64;
     let duplicate_text: u64 = text_counts.values().filter(|n| **n > 1).sum();
+    let near_duplicates = if config.near_duplicates.enabled {
+        detect_near_duplicates(chunks, &config.near_duplicates)
+    } else {
+        NearDuplicateSummary::default()
+    };
 
     let mean_chars = (total_chars / u128::from(count)) as u64;
     let min_chars = if min_chars == u64::MAX { 0 } else { min_chars };
@@ -373,6 +436,7 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
         giant,
         missing_ids,
         duplicate_text,
+        near_duplicate_pairs: near_duplicates.pairs,
         control_chars,
         bom_chunks,
         min_chars,
@@ -409,6 +473,13 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
         warnings.push(ChunkLintWarning::DuplicateChunks {
             count: duplicate_text,
             groups: duplicate_groups,
+        });
+    }
+    if near_duplicates.pairs > 0 {
+        warnings.push(ChunkLintWarning::NearDuplicateChunks {
+            pairs: near_duplicates.pairs,
+            threshold: config.near_duplicates.threshold,
+            examples: near_duplicates.examples,
         });
     }
     if missing_ids > 0 {
@@ -454,6 +525,124 @@ pub fn lint_chunks(chunks: &[Chunk], config: &ChunkLintConfig) -> ChunkLintRepor
     }
 
     ChunkLintReport { stats, warnings }
+}
+
+#[derive(Default)]
+struct NearDuplicateSummary {
+    pairs: u64,
+    examples: Vec<NearDuplicatePair>,
+}
+
+#[derive(Clone)]
+struct NearDuplicateSignature {
+    id: Option<String>,
+    normalized: String,
+    values: Vec<u64>,
+}
+
+fn detect_near_duplicates(
+    chunks: &[Chunk],
+    config: &NearDuplicateLintConfig,
+) -> NearDuplicateSummary {
+    if config.signature_len == 0 || config.threshold > 1.0 {
+        return NearDuplicateSummary::default();
+    }
+
+    let signatures = chunks
+        .iter()
+        .filter_map(|chunk| build_signature(chunk, config))
+        .collect::<Vec<_>>();
+    let mut summary = NearDuplicateSummary::default();
+
+    for (left_index, left) in signatures.iter().enumerate() {
+        for right in signatures.iter().skip(left_index.saturating_add(1)) {
+            if left.normalized == right.normalized {
+                continue;
+            }
+            let similarity = signature_similarity(&left.values, &right.values);
+            if similarity >= config.threshold {
+                summary.pairs = summary.pairs.saturating_add(1);
+                if summary.examples.len() < config.max_examples {
+                    summary.examples.push(NearDuplicatePair {
+                        left_id: left.id.clone(),
+                        right_id: right.id.clone(),
+                        similarity,
+                    });
+                }
+            }
+        }
+    }
+
+    summary
+}
+
+fn build_signature(
+    chunk: &Chunk,
+    config: &NearDuplicateLintConfig,
+) -> Option<NearDuplicateSignature> {
+    let normalized = normalize_for_near_duplicate(&chunk.text);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let tokens = normalized.split_whitespace().collect::<Vec<_>>();
+    let shingle_tokens = config.shingle_tokens.max(1);
+    let mut shingles = Vec::new();
+    if tokens.len() < shingle_tokens {
+        shingles.push(normalized.clone());
+    } else {
+        for window in tokens.windows(shingle_tokens) {
+            shingles.push(window.join(" "));
+        }
+    }
+
+    let mut values = vec![u64::MAX; config.signature_len];
+    for shingle in shingles {
+        for (seed, value) in values.iter_mut().enumerate() {
+            let hash = stable_hash(seed as u64, &shingle);
+            *value = (*value).min(hash);
+        }
+    }
+
+    Some(NearDuplicateSignature {
+        id: chunk.id.clone(),
+        normalized,
+        values,
+    })
+}
+
+fn normalize_for_near_duplicate(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut in_space = false;
+    for ch in text.chars().flat_map(char::to_lowercase) {
+        if ch.is_alphanumeric() {
+            normalized.push(ch);
+            in_space = false;
+        } else if !in_space && !normalized.is_empty() {
+            normalized.push(' ');
+            in_space = true;
+        }
+    }
+    normalized.trim().to_string()
+}
+
+fn stable_hash(seed: u64, text: &str) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64 ^ seed.wrapping_mul(0x9e3779b97f4a7c15);
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+        hash ^= hash >> 32;
+    }
+    hash
+}
+
+fn signature_similarity(left: &[u64], right: &[u64]) -> f64 {
+    let total = left.len().min(right.len());
+    if total == 0 {
+        return 0.0;
+    }
+    let matches = left.iter().zip(right).filter(|(a, b)| a == b).count();
+    matches as f64 / total as f64
 }
 
 /// Strict variant of [`lint_chunks`]: returns `Err(Error::Ingestion(..))`
@@ -519,6 +708,7 @@ mod tests {
                 ChunkLintWarning::Encoding { .. } => "encoding",
                 ChunkLintWarning::UnknownLanguage { .. } => "unknown_language",
                 ChunkLintWarning::DisallowedLanguages { .. } => "language",
+                ChunkLintWarning::NearDuplicateChunks { .. } => "near_duplicate",
             })
             .collect();
         assert!(kinds.contains(&"empty"));
@@ -612,6 +802,75 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| matches!(warning, ChunkLintWarning::DisallowedLanguages { .. }))
+        );
+    }
+
+    #[test]
+    fn near_duplicate_lint_flags_similar_chunks_when_enabled() {
+        let chunks = vec![
+            Chunk::new(
+                "a",
+                "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",
+            ),
+            Chunk::new(
+                "b",
+                "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda nu",
+            ),
+            Chunk::new(
+                "c",
+                "orchid payroll cabinet runway marble visitor lantern summit anchor velvet puzzle",
+            ),
+        ];
+        let config = ChunkLintConfig {
+            near_duplicates: NearDuplicateLintConfig {
+                enabled: true,
+                shingle_tokens: 1,
+                signature_len: 96,
+                threshold: 0.75,
+                max_examples: 4,
+            },
+            ..ChunkLintConfig::default()
+        };
+
+        let report = lint_chunks(&chunks, &config);
+
+        assert_eq!(report.stats.near_duplicate_pairs, 1);
+        assert!(report.warnings.iter().any(|warning| matches!(
+            warning,
+            ChunkLintWarning::NearDuplicateChunks {
+                pairs: 1,
+                examples,
+                ..
+            } if examples.len() == 1
+                && examples[0].left_id.as_deref() == Some("a")
+                && examples[0].right_id.as_deref() == Some("b")
+        )));
+    }
+
+    #[test]
+    fn near_duplicate_lint_skips_exact_duplicates() {
+        let chunks = vec![
+            Chunk::new("a", "same text repeated for exact duplicate coverage"),
+            Chunk::new("b", "same text repeated for exact duplicate coverage"),
+        ];
+        let config = ChunkLintConfig {
+            near_duplicates: NearDuplicateLintConfig {
+                enabled: true,
+                threshold: 0.0,
+                ..NearDuplicateLintConfig::default()
+            },
+            ..ChunkLintConfig::default()
+        };
+
+        let report = lint_chunks(&chunks, &config);
+
+        assert_eq!(report.stats.duplicate_text, 2);
+        assert_eq!(report.stats.near_duplicate_pairs, 0);
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|warning| matches!(warning, ChunkLintWarning::NearDuplicateChunks { .. }))
         );
     }
 }

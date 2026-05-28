@@ -27,6 +27,7 @@ feature flags.
 | JSON / Markdown reports + baseline diff | ✅ | `retrieval` | Report unit tests + harness test |
 | Repeated-trial pass@k / pass^k reliability reports | ✅ | `retrieval` | Report unit tests |
 | Stale-content + `version_key` conflict detection | ✅ | `retrieval` | `tests/staleness.rs` |
+| Freshness rollups in `MultiReport` + regression gates | ✅ | `retrieval` | Report unit tests |
 | Pre/post shadow-store scoring | — | `shadow` | `tests/shadow.rs` |
 | Model-free knowledge-gain scoring | — | `knowledge-gain` | Unit tests + `eval_memvid` |
 | Candidate-document gain ranking + host novelty | — | `knowledge-gain` | Unit tests + `eval_memvid` |
@@ -54,7 +55,7 @@ Cross-crate coordination lives in
 | --- | --- | --- |
 | `retrieval` | yes | Pure-Rust retrieval metrics, qrels loading, harness, reports, and diffs. |
 | `ragas` | no | LLM-backed RAGAS-style judges and `RagasHarness`. |
-| `ingestion` | no | Zero-waste ingestion Track 1 (IoCs), Track 3 (propositions), chunk linting with encoding/language checks, lexical knowledge gain, and LLM extractor adapters. |
+| `ingestion` | no | Zero-waste ingestion Track 1 (IoCs), Track 3 (propositions), chunk linting with encoding/language/near-duplicate checks, lexical knowledge gain, and LLM extractor adapters. |
 | `ingestion-graph` | no | Track 2 knowledge-graph triples plus `petgraph`-backed baseline. Implies `ingestion`. |
 | `embedding-novelty` | no | `EmbeddingNoveltyAdapter` over a host-provided `rig::embeddings::EmbeddingModel`. Implies `knowledge-gain`. |
 | `knowledge-gain` | no | `KnowledgeGainReport` for weighted candidate-minus-baseline scoring, candidate-document ranking, and host-supplied novelty from a `ReportDiff`. Implies `shadow`. |
@@ -106,6 +107,37 @@ println!("{}", diff.to_markdown());
 
 The diff refuses to compare reports whose `judge_fingerprint` differs, so
 swapping an LLM judge never silently moves your score.
+
+### Freshness rollups
+
+The `staleness` module can flag stale top-k hits and `version_key` conflicts
+per query. Convert those detector outputs into a `FreshnessReport`, then attach
+it to a `MultiReport`. Use `with_freshness_metrics` when freshness should also
+participate in the existing `RegressionGate` path:
+
+```rust,no_run
+# use rig_retrieval_evals::{
+#     ConflictReport, FreshnessReport, MultiReport, RegressionGate,
+#     StalenessReport,
+# };
+# fn demo(stale: Vec<StalenessReport>, conflicts: Vec<ConflictReport>) -> rig_retrieval_evals::Result<()> {
+let freshness = FreshnessReport::from_query_reports(10, &stale, &conflicts)?;
+let report = MultiReport::new(vec![]).with_freshness_metrics(freshness);
+
+let gate = RegressionGate::new()
+    .with_threshold("freshness.stale_free_rate@10", 0.01)
+    .with_threshold("freshness.conflict_free_rate@10", 0.01);
+# let baseline = report.clone();
+let diff = report.diff(&baseline)?;
+assert_eq!(diff.exit_code(&gate), 0);
+# Ok(()) }
+```
+
+The attached `FreshnessReport` retains dataset-level rates (`stale_rate`,
+`conflict_rate`, query rates, total counts) and per-query stale/conflict rates.
+The generated metric rows are score-like (`*_free_rate@k`, higher is better),
+so they work with the same baseline-diff gate semantics as recall, nDCG, or
+MRR.
 
 ### Shadow scoring
 
@@ -258,8 +290,9 @@ the pipeline emits an `IngestionDelta` containing net-new IoCs, propositions,
 and graph triples plus structured drop reasons for duplicates or redundant
 facts. The same feature includes `lint_chunks` for pre-embedding corpus shape
 checks; it now flags empty/tiny/giant/duplicate chunks, missing IDs, control
-characters, byte-order marks, and optional `whatlang` language allow-list
-violations through `LanguageLintConfig`.
+characters, byte-order marks, optional `whatlang` language allow-list
+violations through `LanguageLintConfig`, and opt-in MinHash-style near
+duplicates through `NearDuplicateLintConfig`.
 
 For cheap ingestion-delta scoring, `jaccard_knowledge_gain` and
 `corpus_jaccard_knowledge_gain` compute lexical novelty over normalized token

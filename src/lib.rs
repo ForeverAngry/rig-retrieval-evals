@@ -76,8 +76,8 @@ pub use observe::{
     emit_report, report_envelopes,
 };
 pub use report::{
-    MetricCi, MetricDelta, MetricReport, MultiReport, QueryDelta, QueryReliability, RegressionGate,
-    ReliabilityReport, ReportDiff,
+    FreshnessQueryRollup, FreshnessReport, MetricCi, MetricDelta, MetricReport, MultiReport,
+    QueryDelta, QueryReliability, RegressionGate, ReliabilityReport, ReportDiff,
 };
 pub use retrieval::{HitRateAtK, MapAtK, Mrr, NdcgAtK, PrecisionAtK, RecallAtK, RetrievalMetric};
 #[cfg(feature = "shadow")]
@@ -102,9 +102,10 @@ pub use ingestion::{
     ChunkLintWarning, ChunkStats, DistillationPipeline, Document, Dropped, DroppedItem,
     DroppedReason, EncodingLintWarning, GraphBaseline, GraphTrack, InMemoryGraphBaseline,
     InMemoryIocBaseline, IngestionDelta, IngestionReport, Ioc, IocBaseline, IocExtractor, IocKind,
-    LanguageCount, LanguageLintConfig, LlmPropositionExtractor, LlmTripleExtractor, NoGraphTrack,
-    NoPropositionTrack, Proposition, PropositionExtractor, PropositionTrack, RedundancyCheck,
-    RedundancyVerdict, RegexIocExtractor, Section, SectionKind, StubPropositionExtractor,
-    StubTripleExtractor, Triple, TripleExtractor, VectorStoreRedundancyCheck,
-    corpus_jaccard_knowledge_gain, jaccard_knowledge_gain, lint_chunks, lint_chunks_strict,
+    LanguageCount, LanguageLintConfig, LlmPropositionExtractor, LlmTripleExtractor,
+    NearDuplicateLintConfig, NearDuplicatePair, NoGraphTrack, NoPropositionTrack, Proposition,
+    PropositionExtractor, PropositionTrack, RedundancyCheck, RedundancyVerdict, RegexIocExtractor,
+    Section, SectionKind, StubPropositionExtractor, StubTripleExtractor, Triple, TripleExtractor,
+    VectorStoreRedundancyCheck, corpus_jaccard_knowledge_gain, jaccard_knowledge_gain, lint_chunks,
+    lint_chunks_strict,
 };

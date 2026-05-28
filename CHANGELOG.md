@@ -32,6 +32,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `rig_tap.regressed` / `rig_tap.conversation_id` attributes so existing
   OpenTelemetry collectors route eval reports the same way they route
   prompt and tool events.
+- `FreshnessReport` and `FreshnessQueryRollup` for rolling
+  `StalenessReport` / `ConflictReport` outputs into `MultiReport`.
+  `MultiReport::with_freshness` attaches the dataset/per-query rollup, while
+  `with_freshness_metrics` also appends score-like
+  `freshness.stale_free_rate@k` and `freshness.conflict_free_rate@k` metric
+  rows so freshness regressions trip the existing `RegressionGate` / diff
+  path.
+- Opt-in MinHash-style chunk near-duplicate linting via
+  `NearDuplicateLintConfig`, `NearDuplicatePair`,
+  `ChunkStats::near_duplicate_pairs`, and
+  `ChunkLintWarning::NearDuplicateChunks`. The default remains disabled so
+  existing ingestion gates keep their current warning set until hosts opt in.
 
 ## [0.2.0] - 2026-05-24
 

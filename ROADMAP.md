@@ -17,7 +17,8 @@ This roadmap is the crate-local operating plan for `rig-retrieval-evals`. The cr
 - Off-by-default `ingestion-graph` sub-feature with knowledge-graph triples, in-memory and `petgraph` baselines, and model-independent contract tests for LLM-backed triple extractors.
 - Chunk-stat ingestion linting (`ChunkLintConfig`, `ChunkStats`,
   `ChunkLintReport`, `ChunkLintWarning`, `lint_chunks`) covering
-  token-length distributions, metadata coverage, and per-chunk warnings
+  token-length distributions, metadata coverage, language/encoding sanity,
+  opt-in MinHash-style near-duplicate detection, and per-chunk warnings
   ([src/ingestion/lint.rs](src/ingestion/lint.rs)).
 - Repeated-trial reliability reporting with thresholded pass@k and pass^k over
   shared `MetricReport`s.
@@ -32,19 +33,23 @@ This roadmap is the crate-local operating plan for `rig-retrieval-evals`. The cr
 ## Prototype Grade
 
 - Retrieval metrics are usable; RAGAS is merged but release pending.
-- Zero-waste ingestion tracks are merged and covered by deterministic tests; chunk-stat linting ships token-length and metadata-coverage checks today; language/encoding linting and MinHash-style near-duplicate detection remain planned.
+- Zero-waste ingestion tracks are merged and covered by deterministic tests; chunk-stat linting ships token-length, metadata-coverage, language/encoding, and opt-in MinHash-style near-duplicate checks today.
 - `examples/eval_memvid.rs` now runs `rig-memvid::MemvidStore` and `MemoryCardContext` through `RetrievalHarness` / `EvalShadowStore` against committed raw-frame and structured-card fixtures.
 - `EvalShadowStore` is available behind `shadow` for pre/post scoring over two `VectorStoreIndexDyn` snapshots.
 - Knowledge-gain scoring is available behind `knowledge-gain`, including candidate-document ranking and host-supplied novelty scores; `embedding-novelty` adds a provider-neutral adapter over host-supplied Rig embedding models.
 - Bootstrap confidence intervals (`MetricCi`, `MetricReport::bootstrap_ci` / `with_bootstrap_ci`, deterministic SplitMix64) and non-zero CI exits (`ReportDiff::is_clean` / `exit_code`) ship in the default `retrieval` build and round-trip through `MultiReport::diff`.
 - `observe` feature emits `MultiReport` / `ReportDiff` as `rig-tap`-compatible JSON envelopes (`eval.retrieval_report`, `eval.regression_diff`) on the `rig_tap` tracing target without depending on `rig-tap`.
+- `FreshnessReport` / `FreshnessQueryRollup` roll stale-hit and conflict
+  detector outputs into `MultiReport`, preserving dataset-level counts/rates
+  and per-query rates. `MultiReport::with_freshness_metrics` appends
+  score-like freshness metric rows (`freshness.stale_free_rate@k`,
+  `freshness.conflict_free_rate@k`) so freshness regressions use the same
+  baseline-diff and `RegressionGate` path as IR metrics.
 
 ## Next Work
 
 1. Cut the RAGAS and ingestion release after final validation and README/changelog sync.
-2. Extend chunk-stat ingestion linting with language/encoding sanity checks and MinHash near-duplicate detection.
-3. Add provider-specific novelty examples only where they belong: downstream demos or docs that already own credentials and model setup.
-4. Surface `StalenessReport` / `ConflictReport` aggregates inside `MultiReport` (rate per query + dataset-level rollup) so freshness regressions trip the same baseline-diff gates as the IR metrics.
+2. Add provider-specific novelty examples only where they belong: downstream demos or docs that already own credentials and model setup.
 
 ## Maturity Bar
 

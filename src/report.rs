@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::staleness::{ConflictReport, StalenessReport};
 
 /// Aggregated statistics for a single metric across a query set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,6 +273,171 @@ pub struct ReliabilityReport {
     pub per_query: Vec<QueryReliability>,
 }
 
+/// Per-query freshness rollup derived from stale-hit and conflict detectors.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FreshnessQueryRollup {
+    /// Query id shared by the stale and conflict reports.
+    pub query_id: String,
+    /// Number of top-k positions considered for this query.
+    pub considered: usize,
+    /// Number of stale hits inside the considered window.
+    pub stale_hits: usize,
+    /// Fraction of considered positions that were stale.
+    pub stale_rate: f64,
+    /// Number of conflict groups inside the considered window.
+    pub conflict_groups: usize,
+    /// Number of documents participating in conflict groups.
+    pub conflicting_doc_count: usize,
+    /// Fraction of considered positions that participated in a conflict group.
+    pub conflict_rate: f64,
+}
+
+/// Dataset-level freshness rollup for stale hits and version-key conflicts.
+///
+/// `FreshnessReport` is intentionally separate from IR metrics so callers can
+/// inspect stale/conflict details as freshness signals. Use
+/// [`MultiReport::with_freshness_metrics`] when those signals should also be
+/// converted into score-like metric rows that participate in
+/// [`RegressionGate`] checks.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FreshnessReport {
+    /// Top-k window used to produce the underlying stale/conflict reports.
+    pub k: usize,
+    /// Number of queries rolled up.
+    pub query_count: usize,
+    /// Total top-k positions considered across all queries.
+    pub total_considered: usize,
+    /// Number of stale hits across all queries.
+    pub stale_hit_count: usize,
+    /// Number of queries with at least one stale hit.
+    pub stale_query_count: usize,
+    /// Dataset-level stale-hit rate: `stale_hit_count / total_considered`.
+    pub stale_rate: f64,
+    /// Fraction of queries that had at least one stale hit.
+    pub stale_query_rate: f64,
+    /// Number of conflict groups across all queries.
+    pub conflict_group_count: usize,
+    /// Number of documents participating in conflict groups across all queries.
+    pub conflicting_doc_count: usize,
+    /// Number of queries with at least one conflict group.
+    pub conflict_query_count: usize,
+    /// Dataset-level conflict rate: `conflicting_doc_count / total_considered`.
+    pub conflict_rate: f64,
+    /// Fraction of queries that had at least one conflict group.
+    pub conflict_query_rate: f64,
+    /// Per-query stale/conflict rollups, preserving stale-report input order.
+    pub per_query: Vec<FreshnessQueryRollup>,
+}
+
+impl FreshnessReport {
+    /// Build a dataset-level freshness rollup from per-query detector outputs.
+    ///
+    /// `staleness` and `conflicts` must cover the same query ids in the same
+    /// order and must use the same `considered` count per query.
+    pub fn from_query_reports(
+        k: usize,
+        staleness: &[StalenessReport],
+        conflicts: &[ConflictReport],
+    ) -> Result<Self> {
+        if staleness.len() != conflicts.len() {
+            return Err(Error::BaselineMismatch(format!(
+                "freshness report count mismatch: stale={} conflict={}",
+                staleness.len(),
+                conflicts.len()
+            )));
+        }
+
+        let mut per_query = Vec::with_capacity(staleness.len());
+        for (stale, conflict) in staleness.iter().zip(conflicts) {
+            if stale.query_id != conflict.query_id {
+                return Err(Error::BaselineMismatch(format!(
+                    "freshness query mismatch: stale={} conflict={}",
+                    stale.query_id, conflict.query_id
+                )));
+            }
+            if stale.considered != conflict.considered {
+                return Err(Error::BaselineMismatch(format!(
+                    "freshness considered mismatch for {}: stale={} conflict={}",
+                    stale.query_id, stale.considered, conflict.considered
+                )));
+            }
+            per_query.push(FreshnessQueryRollup {
+                query_id: stale.query_id.clone(),
+                considered: stale.considered,
+                stale_hits: stale.stale_hits.len(),
+                stale_rate: stale.stale_rate(),
+                conflict_groups: conflict.groups.len(),
+                conflicting_doc_count: conflict.conflicting_doc_count,
+                conflict_rate: conflict.conflict_rate(),
+            });
+        }
+
+        let query_count = per_query.len();
+        let total_considered = per_query.iter().map(|row| row.considered).sum();
+        let stale_hit_count = per_query.iter().map(|row| row.stale_hits).sum();
+        let stale_query_count = per_query.iter().filter(|row| row.stale_hits > 0).count();
+        let conflict_group_count = per_query.iter().map(|row| row.conflict_groups).sum();
+        let conflicting_doc_count = per_query.iter().map(|row| row.conflicting_doc_count).sum();
+        let conflict_query_count = per_query
+            .iter()
+            .filter(|row| row.conflict_groups > 0)
+            .count();
+
+        Ok(Self {
+            k,
+            query_count,
+            total_considered,
+            stale_hit_count,
+            stale_query_count,
+            stale_rate: ratio(stale_hit_count, total_considered),
+            stale_query_rate: ratio(stale_query_count, query_count),
+            conflict_group_count,
+            conflicting_doc_count,
+            conflict_query_count,
+            conflict_rate: ratio(conflicting_doc_count, total_considered),
+            conflict_query_rate: ratio(conflict_query_count, query_count),
+            per_query,
+        })
+    }
+
+    /// Convert freshness failures into score-like metric reports.
+    ///
+    /// Higher is better for these metrics, so the existing
+    /// [`RegressionGate`] can flag freshness regressions without a new gate
+    /// direction system.
+    #[must_use]
+    pub fn metric_reports(&self) -> Vec<MetricReport> {
+        let stale_free = self
+            .per_query
+            .iter()
+            .map(|row| (row.query_id.clone(), 1.0 - row.stale_rate))
+            .collect();
+        let conflict_free = self
+            .per_query
+            .iter()
+            .map(|row| (row.query_id.clone(), 1.0 - row.conflict_rate))
+            .collect();
+        vec![
+            MetricReport::from_per_query(
+                format!("freshness.stale_free_rate@{}", self.k),
+                stale_free,
+            ),
+            MetricReport::from_per_query(
+                format!("freshness.conflict_free_rate@{}", self.k),
+                conflict_free,
+            ),
+        ]
+    }
+}
+
+fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
 impl ReliabilityReport {
     /// Build a repeated-trial reliability report from multiple
     /// [`MetricReport`]s for the same metric.
@@ -473,6 +639,9 @@ pub struct MultiReport {
     pub judge_fingerprint: Option<String>,
     /// One report per metric, in the order metrics were declared.
     pub metrics: Vec<MetricReport>,
+    /// Optional stale/conflict freshness rollup for the same dataset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<FreshnessReport>,
 }
 
 impl MultiReport {
@@ -504,6 +673,25 @@ impl MultiReport {
     #[must_use]
     pub fn with_judge_fingerprint(mut self, fp: impl Into<String>) -> Self {
         self.judge_fingerprint = Some(fp.into());
+        self
+    }
+
+    /// Attach a freshness rollup without modifying metric rows.
+    #[must_use]
+    pub fn with_freshness(mut self, freshness: FreshnessReport) -> Self {
+        self.freshness = Some(freshness);
+        self
+    }
+
+    /// Attach a freshness rollup and append score-like freshness metrics.
+    ///
+    /// Appended metric names are `freshness.stale_free_rate@k` and
+    /// `freshness.conflict_free_rate@k`. Because higher is better, these rows
+    /// can be gated with [`RegressionGate`] just like recall, nDCG, or MRR.
+    #[must_use]
+    pub fn with_freshness_metrics(mut self, freshness: FreshnessReport) -> Self {
+        self.metrics.extend(freshness.metric_reports());
+        self.freshness = Some(freshness);
         self
     }
 
@@ -790,6 +978,7 @@ impl RegressionGate {
 #[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::staleness::{ConflictGroup, ConflictReport, StaleHit, StalenessReport};
 
     #[test]
     fn metric_report_aggregates() {
@@ -1105,5 +1294,137 @@ mod tests {
         let row = diff.rows.first().unwrap();
         assert!(row.current_ci.is_some());
         assert!(row.baseline_ci.is_some());
+    }
+
+    #[test]
+    fn freshness_report_rolls_up_query_rates_and_appends_gateable_metrics() {
+        let staleness = vec![
+            StalenessReport {
+                query_id: "q1".into(),
+                stale_hits: vec![StaleHit {
+                    doc_id: "old".into(),
+                    rank: 0,
+                    superseded_by: "new".into(),
+                }],
+                considered: 2,
+            },
+            StalenessReport {
+                query_id: "q2".into(),
+                stale_hits: vec![],
+                considered: 2,
+            },
+        ];
+        let conflicts = vec![
+            ConflictReport {
+                query_id: "q1".into(),
+                groups: vec![ConflictGroup {
+                    version_key: "alice:address".into(),
+                    doc_ids: vec!["old".into(), "new".into()],
+                }],
+                conflicting_doc_count: 2,
+                considered: 2,
+            },
+            ConflictReport {
+                query_id: "q2".into(),
+                groups: vec![],
+                conflicting_doc_count: 0,
+                considered: 2,
+            },
+        ];
+
+        let freshness = FreshnessReport::from_query_reports(2, &staleness, &conflicts).unwrap();
+
+        assert_eq!(freshness.query_count, 2);
+        assert_eq!(freshness.total_considered, 4);
+        assert_eq!(freshness.stale_hit_count, 1);
+        assert_eq!(freshness.stale_query_count, 1);
+        assert!((freshness.stale_rate - 0.25).abs() < 1e-9);
+        assert!((freshness.stale_query_rate - 0.5).abs() < 1e-9);
+        assert_eq!(freshness.conflict_group_count, 1);
+        assert_eq!(freshness.conflicting_doc_count, 2);
+        assert!((freshness.conflict_rate - 0.5).abs() < 1e-9);
+        assert_eq!(freshness.per_query[0].stale_rate, 0.5);
+        assert_eq!(freshness.per_query[0].conflict_rate, 1.0);
+
+        let report = MultiReport::new(vec![]).with_freshness_metrics(freshness);
+        assert!(report.freshness.is_some());
+        assert_eq!(report.metrics.len(), 2);
+        assert_eq!(report.metrics[0].metric, "freshness.stale_free_rate@2");
+        assert!((report.metrics[0].mean - 0.75).abs() < 1e-9);
+        assert_eq!(report.metrics[1].metric, "freshness.conflict_free_rate@2");
+        assert!((report.metrics[1].mean - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn freshness_metrics_participate_in_existing_regression_gate() {
+        let baseline_freshness = FreshnessReport::from_query_reports(
+            2,
+            &[StalenessReport {
+                query_id: "q1".into(),
+                stale_hits: vec![],
+                considered: 2,
+            }],
+            &[ConflictReport {
+                query_id: "q1".into(),
+                groups: vec![],
+                conflicting_doc_count: 0,
+                considered: 2,
+            }],
+        )
+        .unwrap();
+        let candidate_freshness = FreshnessReport::from_query_reports(
+            2,
+            &[StalenessReport {
+                query_id: "q1".into(),
+                stale_hits: vec![StaleHit {
+                    doc_id: "old".into(),
+                    rank: 0,
+                    superseded_by: "new".into(),
+                }],
+                considered: 2,
+            }],
+            &[ConflictReport {
+                query_id: "q1".into(),
+                groups: vec![],
+                conflicting_doc_count: 0,
+                considered: 2,
+            }],
+        )
+        .unwrap();
+
+        let baseline = MultiReport::new(vec![]).with_freshness_metrics(baseline_freshness);
+        let candidate = MultiReport::new(vec![]).with_freshness_metrics(candidate_freshness);
+        let diff = candidate.diff(&baseline).unwrap();
+        let gate = RegressionGate::new().with_threshold("freshness.stale_free_rate@2", 0.1);
+
+        let regressions = diff.regressions(&gate);
+        assert_eq!(regressions.len(), 1);
+        assert_eq!(regressions[0].metric, "freshness.stale_free_rate@2");
+    }
+
+    #[test]
+    fn freshness_report_requires_matching_query_reports() {
+        let err = FreshnessReport::from_query_reports(
+            5,
+            &[StalenessReport {
+                query_id: "q1".into(),
+                stale_hits: vec![],
+                considered: 1,
+            }],
+            &[ConflictReport {
+                query_id: "q2".into(),
+                groups: vec![],
+                conflicting_doc_count: 0,
+                considered: 1,
+            }],
+        )
+        .unwrap_err();
+
+        match err {
+            Error::BaselineMismatch(message) => {
+                assert!(message.contains("freshness query mismatch"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

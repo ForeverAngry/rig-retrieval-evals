@@ -71,7 +71,8 @@ pub use ioc::{InMemoryIocBaseline, Ioc, IocBaseline, IocExtractor, IocKind, Rege
 pub use knowledge_gain::{corpus_jaccard_knowledge_gain, jaccard_knowledge_gain};
 pub use lint::{
     Chunk, ChunkLintConfig, ChunkLintReport, ChunkLintWarning, ChunkStats, EncodingLintWarning,
-    LanguageCount, LanguageLintConfig, lint_chunks, lint_chunks_strict,
+    LanguageCount, LanguageLintConfig, NearDuplicateLintConfig, NearDuplicatePair, lint_chunks,
+    lint_chunks_strict,
 };
 pub use pipeline::{
     ActiveGraphTrack, ActivePropositionTrack, DistillationPipeline, GraphTrack, NoGraphTrack,
