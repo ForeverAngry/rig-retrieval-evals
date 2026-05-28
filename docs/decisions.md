@@ -74,7 +74,7 @@ Measures how directly the answer addresses the user's initial query, penalizing 
 - **Formula**: `Mean(CosineSim(orig_q, gen_q_i))` over `i=1..N`.
 - **Output**: Continuous `[0.0, 1.0]`.
 
-## Knowledge Gain & Novelty (v0.3)
+## Knowledge Gain & Novelty (v0.2.0+)
 To measure whether ingesting a *new* document actually improves the knowledge base:
 - **Gain(d, K)**: `α * ΔRecall@k + β * ΔContextRecall + γ * novelty(d, K)`
 - **Novelty(d, K)**: `1 - max(cosine(embed(chunks(d)), embed(chunks(K))))`
