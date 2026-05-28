@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.2.0...v0.3.0) - 2026-05-28
+
+### Build
+
+- Drop path override on rig-memvid dev-dep so release-plz can resolve crates.io fallback
+
+### CI
+
+- Add release-plz workflow and config
+
 ### Added
 
 - Bootstrap confidence intervals on `MetricReport::mean`: new `MetricCi`
