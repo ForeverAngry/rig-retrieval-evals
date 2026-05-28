@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.3.0...v0.3.1) - 2026-05-28
+
+### Documentation
+
+- Align docs/decisions.md heading + AGENTS feature list with v0.2.0+ ([#2](https://github.com/ForeverAngry/rig-retrieval-evals/pull/2))
+
 ## [0.3.0](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.2.0...v0.3.0) - 2026-05-28
 
 ### Build
