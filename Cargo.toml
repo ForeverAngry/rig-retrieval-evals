@@ -25,7 +25,7 @@ whatlang = { version = "0.16", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.102"
-rig-memvid = { version = "0.2.0", path = "../rig-memvid", default-features = false, features = [
+rig-memvid = { version = "0.2.0", default-features = false, features = [
 	"lex",
 	"simd",
 ] }
