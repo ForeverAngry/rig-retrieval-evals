@@ -35,8 +35,10 @@ primitives:
 ## Feature flags
 
 Default = `retrieval` (pure-Rust IR metrics, no LLM deps). Optional:
-`ragas`, `ingestion`, and `ingestion-graph`. Future candidates include
-`bm25`, `cli`, and `full`. Gate optional code with `#[cfg(feature = "...")]`.
+`embedding-novelty`, `ingestion`, `ingestion-graph`, `knowledge-gain`,
+`memvid-example`, `ragas`, `shadow`, `skills`, `memory`, `models`, `agents`,
+and `observe`. Future candidates include `bm25`, `cli`, and `full`. Gate
+optional code with `#[cfg(feature = "...")]`.
 
 ## Validation
 
