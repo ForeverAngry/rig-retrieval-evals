@@ -14,7 +14,7 @@ diff between runs to catch regressions before they ship.
 
 ## Status
 
-Crate version: `0.3.1`. Rust edition: 2024. MSRV: 1.89. Runtime-agnostic
+Crate version: `0.3.2`. Rust edition: 2024. MSRV: 1.89. Runtime-agnostic
 library; `tokio` is only a dev-dependency for tests and examples.
 
 The default build ships **retrieval-quality** evaluation plus stale /
