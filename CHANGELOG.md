@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.3.1...v0.3.2) - 2026-06-01
+
+### Tests
+
+- Cover ingestion graph knowledge gain interaction ([#7](https://github.com/ForeverAngry/rig-retrieval-evals/pull/7))
+
 ## [0.3.1](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.3.0...v0.3.1) - 2026-05-28
 
 ### Documentation
