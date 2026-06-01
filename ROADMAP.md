@@ -32,7 +32,7 @@ This roadmap is the crate-local operating plan for `rig-retrieval-evals`. The cr
 
 ## Prototype Grade
 
-- Retrieval metrics are usable; RAGAS is merged but release pending.
+- Retrieval metrics and RAGAS are released and exercised in CI.
 - Zero-waste ingestion tracks are merged and covered by deterministic tests; chunk-stat linting ships token-length, metadata-coverage, language/encoding, and opt-in MinHash-style near-duplicate checks today.
 - `examples/eval_memvid.rs` now runs `rig-memvid::MemvidStore` and `MemoryCardContext` through `RetrievalHarness` / `EvalShadowStore` against committed raw-frame and structured-card fixtures.
 - `EvalShadowStore` is available behind `shadow` for pre/post scoring over two `VectorStoreIndexDyn` snapshots.
@@ -48,7 +48,7 @@ This roadmap is the crate-local operating plan for `rig-retrieval-evals`. The cr
 
 ## Next Work
 
-1. Cut the RAGAS and ingestion release after final validation and README/changelog sync.
+1. ~~Cut the RAGAS and ingestion release after final validation and README/changelog sync.~~ **Shipped in `v0.3.0`** (RAGAS judges, ingestion deltas, IoC + proposition + graph extractors, chunk-stat linting).
 2. Add provider-specific novelty examples only where they belong: downstream demos or docs that already own credentials and model setup.
 
 ## Maturity Bar
