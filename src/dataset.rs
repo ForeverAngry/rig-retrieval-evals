@@ -13,13 +13,22 @@
 //! Documents not listed are treated as **non-relevant** (grade 0). This matches
 //! the standard TREC / BEIR qrels semantics.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::error::{Error, Result};
+
+/// A single record in a BEIR `queries.jsonl` file.
+#[derive(Deserialize)]
+struct BeirQuery {
+    #[serde(rename = "_id")]
+    id: String,
+    #[serde(default)]
+    text: String,
+}
 
 /// A single labeled query in a retrieval dataset.
 ///
@@ -96,6 +105,87 @@ impl Qrels {
                     source,
                 })?;
             queries.push(q);
+        }
+        Ok(Self { queries })
+    }
+
+    /// Load a downloaded BEIR / BRIGHT dataset directory into [`Qrels`].
+    ///
+    /// Standard IR benchmarks ship a `queries.jsonl` (`{"_id","text"}` records)
+    /// and TREC-style relevance judgments at `qrels/<split>.tsv`. This reads
+    /// both and produces one [`GoldQuery`] per query that has at least one
+    /// positive judgment, using the BEIR **corpus ids** directly as
+    /// [`GoldQuery::relevant_docs`] keys — so the retriever under test must
+    /// report those same ids as its `doc_id`s.
+    ///
+    /// The qrels TSV is accepted in both BEIR 3-column
+    /// (`query-id <tab> corpus-id <tab> score`) and TREC 4-column
+    /// (`query-id <tab> iteration <tab> doc-id <tab> relevance`) layouts. A
+    /// header row, blank lines, and any row whose relevance does not parse to a
+    /// positive integer (grade 0) are skipped, so a leading header is handled
+    /// whether or not it is present.
+    ///
+    /// `split` selects the file under `qrels/`, e.g. `"test"` or `"dev"`.
+    pub fn from_beir<P: AsRef<Path>>(dataset_dir: P, split: &str) -> Result<Self> {
+        let dir = dataset_dir.as_ref();
+        debug!(?dir, %split, "loading BEIR dataset");
+
+        // 1. query id -> text.
+        let queries_path = dir.join("queries.jsonl");
+        let queries_text = std::fs::read_to_string(&queries_path)?;
+        let mut query_text: HashMap<String, String> = HashMap::new();
+        for (idx, raw_line) in queries_text.lines().enumerate() {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let record: BeirQuery =
+                serde_json::from_str(line).map_err(|source| Error::DatasetParse {
+                    line: idx + 1,
+                    source,
+                })?;
+            query_text.insert(record.id, record.text);
+        }
+
+        // 2. Group positive judgments by query, preserving deterministic order.
+        let qrels_path = dir.join("qrels").join(format!("{split}.tsv"));
+        let qrels_text = std::fs::read_to_string(&qrels_path)?;
+        let mut grouped: BTreeMap<String, HashMap<String, u8>> = BTreeMap::new();
+        for raw_line in qrels_text.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let cols: Vec<&str> = line.split('\t').collect();
+            let (qid, doc_id, rel) = match cols.as_slice() {
+                [qid, doc_id, rel] => (*qid, *doc_id, *rel),
+                [qid, _iter, doc_id, rel] => (*qid, *doc_id, *rel),
+                _ => continue,
+            };
+            // A non-numeric / non-positive relevance (e.g. the header's
+            // "score") yields grade 0 and is dropped.
+            let grade: u8 = rel.trim().parse().unwrap_or(0);
+            if grade == 0 {
+                continue;
+            }
+            grouped
+                .entry(qid.trim().to_string())
+                .or_default()
+                .insert(doc_id.trim().to_string(), grade);
+        }
+
+        // 3. Emit a GoldQuery per query that has both text and a positive judgment.
+        let mut queries = Vec::with_capacity(grouped.len());
+        for (qid, relevant) in grouped {
+            let Some(text) = query_text.get(&qid) else {
+                continue;
+            };
+            queries.push(GoldQuery {
+                query_id: qid.clone(),
+                query: text.clone(),
+                relevant_docs: relevant,
+                reference_answer: None,
+            });
         }
         Ok(Self { queries })
     }

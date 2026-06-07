@@ -676,6 +676,20 @@ impl MultiReport {
         self
     }
 
+    /// Attach a deterministic percentile-bootstrap confidence interval to
+    /// every metric row. Equivalent to mapping [`MetricReport::with_bootstrap_ci`]
+    /// over [`MultiReport::metrics`]. See that method for the algorithm and
+    /// determinism guarantees.
+    #[must_use]
+    pub fn with_bootstrap(mut self, iterations: usize, level: f64, seed: u64) -> Self {
+        self.metrics = self
+            .metrics
+            .into_iter()
+            .map(|m| m.with_bootstrap_ci(iterations, level, seed))
+            .collect();
+        self
+    }
+
     /// Attach a freshness rollup without modifying metric rows.
     #[must_use]
     pub fn with_freshness(mut self, freshness: FreshnessReport) -> Self {
@@ -760,6 +774,16 @@ impl MultiReport {
             });
         }
         Ok(ReportDiff { rows })
+    }
+
+    /// Render a head-to-head Markdown delta table of this report against
+    /// `baseline` (current, baseline, and `Δ = current − baseline` per
+    /// metric). Convenience wrapper over `self.diff(baseline)?.to_markdown()`;
+    /// fails on a judge-fingerprint mismatch for the same reason [`diff`] does.
+    ///
+    /// [`diff`]: MultiReport::diff
+    pub fn delta_markdown(&self, baseline: &MultiReport) -> Result<String> {
+        Ok(self.diff(baseline)?.to_markdown())
     }
 }
 

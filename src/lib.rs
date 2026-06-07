@@ -5,11 +5,16 @@
 //!
 //! The crate gives you:
 //!
-//! - A BEIR-compatible [`dataset::Qrels`] loader (JSONL).
+//! - A BEIR-compatible [`dataset::Qrels`] loader (JSONL and BEIR/BRIGHT
+//!   `queries.jsonl` + `qrels/<split>.tsv` via [`dataset::Qrels::from_beir`]).
 //! - A pure-Rust catalogue of standard IR metrics (Recall, Precision, MRR,
 //!   MAP, nDCG, HitRate) in [`retrieval`].
 //! - An async [`harness::RetrievalHarness`] that drives any store
-//!   implementing [`rig::vector_store::VectorStoreIndexDyn`].
+//!   implementing [`rig::vector_store::VectorStoreIndexDyn`], plus a
+//!   [`retriever::Retriever`] seam for scoring non-vector backends (lexical /
+//!   BM25 / hybrid) with the same metrics.
+//! - A deterministic, seeded [`synthetic`] corpus + qrels generator for
+//!   reproducible benchmarks and fixture-free tests.
 //! - JSON / Markdown [`report::MultiReport`]s with baseline diffing.
 //!
 //! See the crate README for an end-to-end quickstart.
@@ -41,9 +46,11 @@ pub mod observe;
 pub mod ragas;
 pub mod report;
 pub mod retrieval;
+pub mod retriever;
 #[cfg(feature = "shadow")]
 pub mod shadow;
 pub mod staleness;
+pub mod synthetic;
 
 #[cfg(feature = "agents")]
 pub use agents::{
@@ -80,11 +87,15 @@ pub use report::{
     QueryDelta, QueryReliability, RegressionGate, ReliabilityReport, ReportDiff,
 };
 pub use retrieval::{HitRateAtK, MapAtK, Mrr, NdcgAtK, PrecisionAtK, RecallAtK, RetrievalMetric};
+pub use retriever::{Retriever, VectorStoreRetriever, retrieve_all, score_retriever};
 #[cfg(feature = "shadow")]
 pub use shadow::{EvalShadowStore, ShadowEvalReport};
 pub use staleness::{
     ConflictGroup, ConflictReport, CorpusVersions, StaleHit, StalenessAnnotation, StalenessReport,
     detect_conflicts, detect_stale_hits,
+};
+pub use synthetic::{
+    SyntheticConfig, SyntheticCorpus, SyntheticDoc, generate as generate_synthetic,
 };
 
 #[cfg(feature = "ingestion")]

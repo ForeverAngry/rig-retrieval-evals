@@ -24,9 +24,11 @@ feature flags.
 
 | Capability | Default | Feature | Validation |
 | --- | :---: | --- | --- |
-| BEIR-style qrels loader | ✅ | `retrieval` | Unit + harness integration tests |
+| BEIR-style qrels loader (JSONL + `from_beir` TSV) | ✅ | `retrieval` | Unit + harness integration tests |
 | Recall / Precision / MRR / MAP / nDCG / HitRate | ✅ | `retrieval` | Metric unit tests |
 | Async `RetrievalHarness` over any `VectorStoreIndexDyn` | ✅ | `retrieval` | `tests/harness.rs` |
+| `Retriever` trait for non-vector backends (lexical / hybrid) | ✅ | `retrieval` | `retriever` doc test |
+| Seeded synthetic corpus + qrels generator | ✅ | `retrieval` | `synthetic` unit tests |
 | JSON / Markdown reports + baseline diff | ✅ | `retrieval` | Report unit tests + harness test |
 | Repeated-trial pass@k / pass^k reliability reports | ✅ | `retrieval` | Report unit tests |
 | Stale-content + `version_key` conflict detection | ✅ | `retrieval` | `tests/staleness.rs` |

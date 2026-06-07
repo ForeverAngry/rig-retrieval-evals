@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.3.2...v0.4.0) - 2026-06-07
+
+### Added
+
+- `retriever::Retriever` trait plus `VectorStoreRetriever` adapter and the
+  `score_retriever` / `retrieve_all` drivers, so backends that are not vector
+  stores (lexical / BM25 / hybrid rerankers, remote search APIs) can be scored
+  with the same IR metrics. `RetrievalHarness` now delegates to this driver.
+- `Qrels::from_beir` loads a downloaded BEIR / BRIGHT dataset
+  (`queries.jsonl` + `qrels/<split>.tsv`, both 3- and 4-column layouts).
+- `synthetic` module: deterministic, seeded "needle in a haystack" corpus +
+  qrels generator for reproducible benchmarks and fixture-free tests.
+- `RetrievalHarness::with_bootstrap` and `MultiReport::with_bootstrap`
+  attach percentile-bootstrap confidence intervals to every metric;
+  `MultiReport::delta_markdown` renders a head-to-head delta table.
+
 ## [0.3.2](https://github.com/ForeverAngry/rig-retrieval-evals/compare/v0.3.1...v0.3.2) - 2026-06-01
 
 ### Tests
